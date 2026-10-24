@@ -111,7 +111,7 @@ public class IntervalWalkTest {
 		long[] C_new_psi = compose(fp, C_new, psi, N);
 		long[] C_rev_psi = compose(fp, C_rev, psi, N);
 
-		long[] ansAnalytical = IntervalWalk.solveVaryingN(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
+		long[] ansAnalytical = IntervalWalk.solveForAllStepCounts(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
 		long ansDP = solveDP(MOD_NTT, C, M_val, k, maxN, false);
 
 		assertEquals(5L, ansDP);
@@ -127,7 +127,7 @@ public class IntervalWalkTest {
 		C_new_psi = compose(fp, C_new, psi, N);
 		C_rev_psi = compose(fp, C_rev, psi, N);
 
-		ansAnalytical = IntervalWalk.solveVaryingN(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
+		ansAnalytical = IntervalWalk.solveForAllStepCounts(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
 		ansDP = solveDP(MOD_NTT, C, M_val, k, maxN, false);
 
 		assertEquals(3L, ansDP);
@@ -158,7 +158,7 @@ public class IntervalWalkTest {
 		long[] C_new_psi = compose(fp, C_new, psi, N);
 		long[] C_rev_psi = compose(fp, C_rev, psi, N);
 
-		long[] ansAnalytical = IntervalWalk.solveVaryingN(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
+		long[] ansAnalytical = IntervalWalk.solveForAllStepCounts(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
 		long ansDP = solveDP(MOD_NTT, C, M_val, k, maxN, true);
 
 		assertEquals(ansDP, ansAnalytical[maxN]);
@@ -188,7 +188,7 @@ public class IntervalWalkTest {
 		long[] C_new_psi = compose(fp, C_new, psi, N);
 		long[] C_rev_psi = compose(fp, C_rev, psi, N);
 
-		long[] ansAnalytical = IntervalWalk.solveVaryingN(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
+		long[] ansAnalytical = IntervalWalk.solveForAllStepCounts(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
 		long ansDP = solveDP(MOD_NON_NTT, C, M_val, k, maxN, false);
 
 		assertEquals(ansDP, ansAnalytical[maxN]);
@@ -232,16 +232,16 @@ public class IntervalWalkTest {
 			long[] C_rev_psi = compose(fp, C_rev, psi, N);
 
 			// Compute answers for all n in [0, maxN] using solveVaryingN (Explicit API)
-			long[] ansVarying = IntervalWalk.solveVaryingN(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
+			long[] ansVarying = IntervalWalk.solveForAllStepCounts(fp, C_new_psi, C_rev_psi, psi, M_val, k, maxN);
 			assertEquals(maxN + 1, ansVarying.length);
 
 			// Compute answers for all n in [0, maxN] using solveVaryingN (Overloaded Raw Polynomial API)
 			long[] A_poly = hasStay ? new long[]{1, 1} : new long[]{0, 1}; // non-negative coefficients: [a_0, a_1]
-			long[] ansVaryingOverloaded = IntervalWalk.solveVaryingN(fp, C, A_poly, M_val, k, maxN);
+			long[] ansVaryingOverloaded = IntervalWalk.solveForAllStepCounts(fp, C, A_poly, M_val, k, maxN);
 			assertArrayEquals(ansVarying, ansVaryingOverloaded);
 
 			// Compute answers for all target positions k_target with fixed n = maxN
-			long[] ansVaryingK = IntervalWalk.solveVaryingK(fp, C, A_poly, M_val, maxN);
+			long[] ansVaryingK = IntervalWalk.solveForAllPositions(fp, C, A_poly, M_val, maxN);
 			assertEquals(M_val, ansVaryingK.length);
 			assertEquals(ansVarying[maxN], ansVaryingK[(int) k]);
 

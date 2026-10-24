@@ -749,6 +749,36 @@ public class PolynomialFp {
 	}
 
 	/**
+	 * Π_(i=0)^(N-1) (1 + a_i x^{b_i}) mod x^L を計算する。
+	 *
+	 * @param a 各項の係数 a_i の配列
+	 * @param b 各項の次数 b_i (b_i >= 0) の配列
+	 * @param L 出力多項式の長さ (mod x^L)
+	 * @return Π_(i=0)^(N-1) (1 + a_i x^{b_i}) mod x^L
+	 *
+	 *         <p>
+	 *         計算量: O(L log L + N)
+	 */
+	public static long[] productOfOnePlusAXB(long[] a, int[] b, int L) {
+		return PolynomialFpDynamic.MOD998244353.productOfOnePlusAXB(a, b, L);
+	}
+
+	/**
+	 * Π_i (1 + a_i x^{b_i})^c_i mod x^L を計算する。
+	 * 各要素 factors[i] は {a_i, b_i} または {a_i, b_i, c_i} (c_i は重複度、省略時は 1)。
+	 *
+	 * @param factors 各項の情報 {a_i, b_i} または {a_i, b_i, c_i} の配列
+	 * @param L 出力多項式の長さ (mod x^L)
+	 * @return 積多項式 mod x^L
+	 *
+	 *         <p>
+	 *         計算量: O(L log L + N)
+	 */
+	public static long[] productOfOnePlusAXB(long[][] factors, int L) {
+		return PolynomialFpDynamic.MOD998244353.productOfOnePlusAXB(factors, L);
+	}
+
+	/**
 	 * AtCoderでa.length=1e6で1.2sec
 	 * A simple and fast algorithm for computing exponentials of power series. Alin Bostan
 	 * a[i]<0があるとバグる！！

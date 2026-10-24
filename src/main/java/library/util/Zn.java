@@ -20,6 +20,20 @@ public class Zn implements LongCommutativeRingStrategy {
 	public long modulus() {
 		return this.mod;
 	}
+	
+	public boolean onPath(long a, long b, long c, int dir) {
+		if (dir == 1) {
+			long b2 = b - a;
+			long c2 = c - a;
+			if (b2 < 0) b2 += mod;
+			if (c2 < 0) c2 += mod;
+			return b2 <= c2;
+		} else if (dir == -1) {
+			return onPath(c, b, a, -dir);
+		} else {
+			throw new AssertionError();
+		}
+	}
 
 	/**
 	 * 返り値 r は r = 0。

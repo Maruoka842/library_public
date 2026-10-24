@@ -10,7 +10,7 @@ import java.util.Arrays;
  * 隣接行列 A の各要素 A[i][j] は頂点 i と頂点 j の間の辺の重みを表す。
  * 辺が存在しない場合は A[i][j] ≥ INF とする。
  */
-public class UndirectedValuedAdjacencyMatrix {
+public class UndirectedValuedAdjacencyMatrixGraph {
 	/**
 	 * 辺が存在しない（無限大）ことを表す定数。
 	 */

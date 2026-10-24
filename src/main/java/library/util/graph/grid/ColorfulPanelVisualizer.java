@@ -25,10 +25,28 @@ public class ColorfulPanelVisualizer {
     private final List<int[]> touches;
     /** 各ステップの操作説明 */
     private final List<String> operationDescriptions;
+    /** 各ステップにおける累積の矩形操作情報リスト */
+    private final List<List<VisualRectangle>> rectangleOperations;
     /** 描画するパスのリスト */
     private final List<VisualPath> paths;
     /** グリッド線を表示するかどうか */
     private boolean isGridVisible = true;
+
+    /**
+     * 描画する矩形領域の情報
+     */
+    public static class VisualRectangle {
+        public final double y0, x0, y1, x1;
+        public final int color;
+
+        public VisualRectangle(double y0, double x0, double y1, double x1, int color) {
+            this.y0 = y0;
+            this.x0 = x0;
+            this.y1 = y1;
+            this.x1 = x1;
+            this.color = color;
+        }
+    }
 
     /**
      * 描画するパスの情報
@@ -61,9 +79,11 @@ public class ColorfulPanelVisualizer {
         this.history = new ArrayList<>();
         this.touches = new ArrayList<>();
         this.operationDescriptions = new ArrayList<>();
+        this.rectangleOperations = new ArrayList<>();
         this.history.add(copyGrid(initialGrid));
         this.touches.add(null);
         this.operationDescriptions.add(null);
+        this.rectangleOperations.add(new ArrayList<>());
         this.paths = new ArrayList<>();
         this.currentStep = 0;
     }
@@ -160,6 +180,49 @@ public class ColorfulPanelVisualizer {
         history.add(nextGrid);
         touches.add(new int[]{y, x, c});
         operationDescriptions.add("Touch: (" + y + ", " + x + ") -> Color " + c);
+        List<VisualRectangle> lastRects = rectangleOperations.get(rectangleOperations.size() - 1);
+        rectangleOperations.add(new ArrayList<>(lastRects));
+    }
+
+    private String formatCoord(double v) {
+        if (v == (long) v) {
+            return String.valueOf((long) v);
+        }
+        return String.valueOf(v);
+    }
+
+    /**
+     * 行が [y0, y1)、列が [x0, x1) の矩形領域にある全セルを色 c で塗り、新しいステップを履歴に追加する。
+     * 時間計算量: O((y1 - y0) * (x1 - x0))
+     *
+     * @param y0 塗り始め行（inclusive）
+     * @param x0 塗り始め列（inclusive）
+     * @param y1 塗り終わり行（exclusive）
+     * @param x1 塗り終わり列（exclusive）
+     * @param c  色番号（0 以上 8 以下）
+     */
+    // 未テスト
+    public void paintRectangle(double y0, double x0, double y1, double x1, int c) {
+        int[][] lastGrid = history.get(history.size() - 1);
+        int[][] nextGrid = copyGrid(lastGrid);
+        int sy = (int) Math.max(0, Math.floor(y0));
+        int ey = (int) Math.min(N, Math.ceil(y1));
+        int sx = (int) Math.max(0, Math.floor(x0));
+        int ex = (int) Math.min(M, Math.ceil(x1));
+        for (int y = sy; y < ey; y++) {
+            for (int x = sx; x < ex; x++) {
+                if (y + 1 > y0 && y < y1 && x + 1 > x0 && x < x1) {
+                    nextGrid[y][x] = c;
+                }
+            }
+        }
+        history.add(nextGrid);
+        touches.add(null);
+        operationDescriptions.add("Rectangle: [" + formatCoord(y0) + ", " + formatCoord(y1) + ") x [" + formatCoord(x0) + ", " + formatCoord(x1) + ") -> Color " + c);
+        List<VisualRectangle> lastRects = rectangleOperations.get(rectangleOperations.size() - 1);
+        List<VisualRectangle> nextRects = new ArrayList<>(lastRects);
+        nextRects.add(new VisualRectangle(y0, x0, y1, x1, c));
+        rectangleOperations.add(nextRects);
     }
 
     /**
@@ -174,16 +237,55 @@ public class ColorfulPanelVisualizer {
      */
     // 未テスト
     public void paintRectangle(int y0, int x0, int y1, int x1, int c) {
-        int[][] lastGrid = history.get(history.size() - 1);
-        int[][] nextGrid = copyGrid(lastGrid);
-        for (int y = y0; y < y1; y++) {
-            for (int x = x0; x < x1; x++) {
-                nextGrid[y][x] = c;
-            }
-        }
-        history.add(nextGrid);
-        touches.add(null);
-        operationDescriptions.add("Rectangle: [" + y0 + ", " + y1 + ") x [" + x0 + ", " + x1 + ") -> Color " + c);
+        paintRectangle((double) y0, (double) x0, (double) y1, (double) x1, c);
+    }
+
+    /**
+     * 指定された 1 点/セル (y, x) を色 c で塗り、新しいステップを履歴に追加する。
+     *
+     * @param y 行位置
+     * @param x 列位置
+     * @param c 色番号（0 以上 8 以下）
+     */
+    // 未テスト
+    public void paintCell(double y, double x, int c) {
+        paintRectangle(y, x, y + 1.0, x + 1.0, c);
+    }
+
+    /**
+     * 指定された 1 点/セル (y, x) を色 c で塗り、新しいステップを履歴に追加する。
+     *
+     * @param y 行位置
+     * @param x 列位置
+     * @param c 色番号（0 以上 8 以下）
+     */
+    // 未テスト
+    public void paintCell(int y, int x, int c) {
+        paintCell((double) y, (double) x, c);
+    }
+
+    /**
+     * 指定された 1 点 (y, x) を色 c で塗り、新しいステップを履歴に追加する。
+     *
+     * @param y 行位置
+     * @param x 列位置
+     * @param c 色番号（0 以上 8 以下）
+     */
+    // 未テスト
+    public void paintPoint(double y, double x, int c) {
+        paintCell(y, x, c);
+    }
+
+    /**
+     * 指定された 1 点 (y, x) を色 c で塗り、新しいステップを履歴に追加する。
+     *
+     * @param y 行位置
+     * @param x 列位置
+     * @param c 色番号（0 以上 8 以下）
+     */
+    // 未テスト
+    public void paintPoint(int y, int x, int c) {
+        paintCell(y, x, c);
     }
 
     private void floodFill(int[][] grid, int y, int x, int oldColor, int newColor) {
@@ -262,15 +364,30 @@ public class ColorfulPanelVisualizer {
                     gridWidth / (double) (M * CELL_SIZE),
                     gridHeight / (double) (N * CELL_SIZE));
 
-            // グリッド部分を縮尺して描画
+            double cellSize = CELL_SIZE * scale;
+
             Graphics2D g2 = (Graphics2D) g.create();
-            g2.scale(scale, scale);
+            g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
             // セルの塗りつぶし
             for (int i = 0; i < N; i++) {
                 for (int j = 0; j < M; j++) {
                     g2.setColor(getColor(grid[i][j]));
-                    g2.fillRect(j * CELL_SIZE, i * CELL_SIZE, CELL_SIZE, CELL_SIZE);
+                    g2.fill(new java.awt.geom.Rectangle2D.Double(
+                            j * cellSize, i * cellSize, cellSize, cellSize));
+                }
+            }
+
+            // paintRectangle による高解像度矩形の描画
+            List<VisualRectangle> currentRects = rectangleOperations.get(currentStep);
+            if (currentRects != null) {
+                for (VisualRectangle rect : currentRects) {
+                    g2.setColor(getColor(rect.color));
+                    g2.fill(new java.awt.geom.Rectangle2D.Double(
+                            rect.x0 * cellSize,
+                            rect.y0 * cellSize,
+                            (rect.x1 - rect.x0) * cellSize,
+                            (rect.y1 - rect.y0) * cellSize));
                 }
             }
 
@@ -278,10 +395,12 @@ public class ColorfulPanelVisualizer {
             if (isGridVisible) {
                 g2.setColor(new Color(200, 200, 200, 150));
                 for (int i = 0; i <= N; i++) {
-                    g2.drawLine(0, i * CELL_SIZE, M * CELL_SIZE, i * CELL_SIZE);
+                    double y = i * cellSize;
+                    g2.draw(new java.awt.geom.Line2D.Double(0, y, M * cellSize, y));
                 }
                 for (int j = 0; j <= M; j++) {
-                    g2.drawLine(j * CELL_SIZE, 0, j * CELL_SIZE, N * CELL_SIZE);
+                    double x = j * cellSize;
+                    g2.draw(new java.awt.geom.Line2D.Double(x, 0, x, N * cellSize));
                 }
             }
 

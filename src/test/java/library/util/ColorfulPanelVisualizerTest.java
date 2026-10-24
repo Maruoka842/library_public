@@ -93,6 +93,66 @@ public class ColorfulPanelVisualizerTest {
         }, grid);
     }
 
+    @Test
+    public void testPaintRectangleDoubleCoordinates() throws Exception {
+        int[][] grid = {
+            {0, 0, 0, 0},
+            {0, 0, 0, 0},
+            {0, 0, 0, 0},
+            {0, 0, 0, 0}
+        };
+
+        ColorfulPanelVisualizer vis = new ColorfulPanelVisualizer(4, 4, grid);
+        vis.paintRectangle(1.0, 1.0, 3.0, 4.0, 5);
+
+        List<int[][]> history = getHistory(vis);
+        assertEquals(2, history.size());
+        assertArrayEquals(new int[][]{
+            {0, 0, 0, 0},
+            {0, 5, 5, 5},
+            {0, 5, 5, 5},
+            {0, 0, 0, 0}
+        }, history.get(1));
+
+        vis.paintRectangle(0.5, 0.5, 2.5, 3.5, 3);
+        history = getHistory(vis);
+        assertEquals(3, history.size());
+        assertArrayEquals(new int[][]{
+            {3, 3, 3, 3},
+            {3, 3, 3, 3},
+            {3, 3, 3, 3},
+            {0, 0, 0, 0}
+        }, history.get(2));
+    }
+
+    @Test
+    public void testPaintCellAndPaintPoint() throws Exception {
+        int[][] grid = {
+            {0, 0, 0},
+            {0, 0, 0},
+            {0, 0, 0}
+        };
+
+        ColorfulPanelVisualizer vis = new ColorfulPanelVisualizer(3, 3, grid);
+        vis.paintCell(1, 1, 2);
+        vis.paintPoint(2, 0, 4);
+
+        List<int[][]> history = getHistory(vis);
+        assertEquals(3, history.size());
+
+        assertArrayEquals(new int[][]{
+            {0, 0, 0},
+            {0, 2, 0},
+            {0, 0, 0}
+        }, history.get(1));
+
+        assertArrayEquals(new int[][]{
+            {0, 0, 0},
+            {0, 2, 0},
+            {4, 0, 0}
+        }, history.get(2));
+    }
+
     @SuppressWarnings("unchecked")
     private List<ColorfulPanelVisualizer.VisualPath> getPaths(ColorfulPanelVisualizer vis) throws Exception {
         Field pathsField = ColorfulPanelVisualizer.class.getDeclaredField("paths");

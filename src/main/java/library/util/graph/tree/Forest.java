@@ -3,7 +3,10 @@ package library.util.graph.tree;
 import java.util.ArrayDeque;
 import java.util.Arrays;
 import java.util.Queue;
+import java.util.function.BinaryOperator;
+import java.util.function.IntBinaryOperator;
 import java.util.function.IntPredicate;
+import java.util.function.LongBinaryOperator;
 
 import library.tools.FastScanner;
 import library.util.collections.IntArrayList;
@@ -285,6 +288,79 @@ public class Forest extends Graph {
 		return parent[x];
 	}
 	
+	/**
+	 * 各頂点 i について、属する連結成分の根から i へのパス上の頂点の a の値の総和を計算して返す。
+	 * O(N)
+	 *
+	 * @param a 各頂点の値の配列
+	 * @return 各頂点について、根からその頂点へのパス上の a の総和の配列
+	 */
+	// 未テスト
+	public long[] prefixSum(long[] a) {
+		return prefixSum(a, (x, y) -> x + y);
+	}
+
+	/**
+	 * 各頂点 i について、二項演算 op の下で、属する連結成分の根から i へのパス上の頂点の a の値の累積演算結果を計算して返す。
+	 * O(N)
+	 *
+	 * @param a 各頂点の値の配列
+	 * @param op 累積に使用する二項演算
+	 * @return 各頂点について、根からその頂点へのパス上の a の累積演算結果の配列
+	 */
+	// 未テスト
+	public long[] prefixSum(long[] a, LongBinaryOperator op) {
+		long[] b = Arrays.copyOf(a, a.length);
+		if (bfsOrder == null) throw new AssertionError("rootが未設定");
+		for (int v : bfsOrder) {
+			for (int ch : childs[v]) {
+				b[ch] = op.applyAsLong(b[v], b[ch]);
+			}
+		}
+		return b;
+	}
+	
+	/**
+	 * 各頂点 i について、二項演算 op の下で、属する連結成分の根から i へのパス上の頂点の a の値の累積演算結果を計算して返す。
+	 * O(N)
+	 *
+	 * @param a 各頂点の値の配列
+	 * @param op 累積に使用する二項演算
+	 * @return 各頂点について、根からその頂点へのパス上の a の累積演算結果の配列
+	 */
+	// 未テスト
+	public int[] prefixSum(int[] a, IntBinaryOperator op) {
+		int[] b = Arrays.copyOf(a, a.length);
+		if (bfsOrder == null) throw new AssertionError("rootが未設定");
+		for (int v : bfsOrder) {
+			for (int ch : childs[v]) {
+				b[ch] = op.applyAsInt(b[v], b[ch]);
+			}
+		}
+		return b;
+	}
+	
+	/**
+	 * 各頂点 i について、二項演算 op の下で、属する連結成分の根から i へのパス上の頂点の a の値の累積演算結果を計算して返す。
+	 * O(N)
+	 *
+	 * @param <T> 配列の要素の型
+	 * @param a 各頂点の値の配列
+	 * @param op 累積に使用する二項演算
+	 * @return 各頂点について、根からその頂点へのパス上の a の累積演算結果の配列
+	 */
+	// 未テスト
+	public <T> T[] prefixSum(T[] a, BinaryOperator<T> op) {
+		T[] b = Arrays.copyOf(a, a.length);
+		if (bfsOrder == null) throw new AssertionError("rootが未設定");
+		for (int v : bfsOrder) {
+			for (int ch : childs[v]) {
+				b[ch] = op.apply(b[v], b[ch]);
+			}
+		}
+		return b;
+	}
+
 	public long[] subtreeSum(long[] a) {
 		//https://atcoder.jp/contests/abc345/submissions/74247165
 		if (childs[N]==null) throw new AssertionError();

@@ -946,6 +946,112 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 	}
 
 	/**
+	 * Π_(i=0)^(N-1) (1 + a_i x^{b_i}) mod x^L を計算する。
+	 *
+	 * @param a 各項の係数 a_i の配列
+	 * @param b 各項の次数 b_i (b_i >= 0) の配列
+	 * @param L 出力多項式の長さ (mod x^L)
+	 * @return Π_(i=0)^(N-1) (1 + a_i x^{b_i}) mod x^L
+	 *
+	 *         <p>
+	 *         計算量: O(L log L + N)
+	 */
+	public long[] productOfOnePlusAXB(long[] a, int[] b, int L) {
+		if (a.length != b.length)
+			throw new IllegalArgumentException("a and b must have the same length");
+		if (L <= 0)
+			return new long[0];
+		int n = a.length;
+		long[][] factors = new long[n][2];
+		for (int i = 0; i < n; i++) {
+			factors[i][0] = a[i];
+			factors[i][1] = b[i];
+		}
+		return productOfOnePlusAXB(factors, L);
+	}
+
+	/**
+	 * Π_i (1 + a_i x^{b_i})^c_i mod x^L を計算する。
+	 * 各要素 factors[i] は {a_i, b_i} または {a_i, b_i, c_i} (c_i は重複度、省略時は 1)。
+	 *
+	 * @param factors 各項の情報 {a_i, b_i} または {a_i, b_i, c_i} の配列
+	 * @param L 出力多項式の長さ (mod x^L)
+	 * @return 積多項式 mod x^L
+	 *
+	 *         <p>
+	 *         計算量: O(L log L + N)
+	 */
+	public long[] productOfOnePlusAXB(long[][] factors, int L) {
+		if (L <= 0)
+			return new long[0];
+		if (factors == null || factors.length == 0) {
+			long[] res = new long[L];
+			res[0] = 1;
+			return res;
+		}
+
+		long scalarMultiplier = 1;
+		long[] g = new long[L];
+
+		long[] inv = new long[L];
+		if (L > 1) {
+			inv[1] = 1;
+			for (int i = 2; i < L; i++) {
+				inv[i] = (mod - mod / i) * inv[(int) (mod % i)] % mod;
+			}
+		}
+
+		for (long[] factor : factors) {
+			if (factor == null || factor.length < 2)
+				continue;
+			long rawA = factor[0];
+			int bi = (int) factor[1];
+			long count = (factor.length >= 3) ? fp.reduce(factor[2]) : 1;
+			if (count == 0)
+				continue;
+
+			long ai = fp.reduce(rawA);
+			if (ai == 0)
+				continue;
+
+			if (bi == 0) {
+				long term = fp.reduce(1 + ai);
+				if (term == 0)
+					return new long[L];
+				long factorMul = MathUtils.modPow(term, count, mod);
+				scalarMultiplier = scalarMultiplier * factorMul % mod;
+				continue;
+			}
+
+			if (bi >= L)
+				continue;
+
+			long currentPow = 1;
+			int maxK = (L - 1) / bi;
+			for (int k = 1; k <= maxK; k++) {
+				currentPow = currentPow * ai % mod;
+				long coef = currentPow * inv[k] % mod;
+				if ((k & 1) == 0) {
+					coef = (mod - coef) % mod;
+				}
+				if (count != 1) {
+					coef = coef * count % mod;
+				}
+				int idx = k * bi;
+				g[idx] = (g[idx] + coef) % mod;
+			}
+		}
+
+		long[] res = exp(g);
+		if (scalarMultiplier != 1) {
+			for (int i = 0; i < L; i++) {
+				res[i] = res[i] * scalarMultiplier % mod;
+			}
+		}
+		return res;
+	}
+
+	/**
 	 * PL[f](x) = sum_(k=1)^(N-1) (mu(k) / k) * log(f(x^k)) mod x^N (N = f.length,
 	 * mu(k) はメビウス関数)
 	 *
@@ -1447,15 +1553,19 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 		long[][] modded = new long[2 * len][];
 		for (int i = 0; i < len; i++)
 			mods[i + len] = i < M ? new long[] { (mod - points[i]) % mod, 1 } : new long[] { 1 };
-		for (int i = len - 1, e = 0; i >= 1; i--) {
-			if (mods[2 * i].length == mods[2 * i + 1].length && mods[2 * i].length == 1 + (1 << e) && e >= 10
-					&& isNTTFriendly) {
-				mods[i] = cyclicmulFFT(mods[2 * i], mods[2 * i + 1], 1 << (e + 1));
-				mods[i] = Arrays.copyOf(mods[i], 1 + (1 << (e + 1)));
+		for (int i = len - 1; i >= 1; i--) {
+			long[] left = mods[i << 1];
+			long[] right = mods[i << 1 | 1];
+			int d = left.length - 1;//次数
+			// d　> 0 かつ　d & (d - 1) == 0 <=> d が2べき	
+			if ( d >= 1024 && left.length == right.length && (d & (d - 1)) == 0 && isNTTFriendly) {
+				mods[i] = cyclicmulFFT(left, right, 2 * d);
+				mods[i] = Arrays.copyOf(mods[i], 2 * d + 1);
+				// mod x^{2d} だと最上位同士の掛け算x^d*x^d=x^{2d}=1で定数項に1加算される
 				mods[i][0]--;
 				if (mods[i][0] < 0)
 					mods[i][0] += mod;
-				mods[i][1 << (e + 1)] = 1;
+				mods[i][2 * d] = 1;
 			} else {
 				mods[i] = mul(mods[2 * i], mods[2 * i + 1]);
 			}
@@ -1600,17 +1710,34 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 	}
 
 	public long[] divFast(long[] a, long[] b) {
-		int degA = deg(a), degB = deg(b);
-		if (degA < degB)
-			return new long[] { 0 };
-		long[] ra = resize(a), rb = resize(b);
-		ArrayUtils.reverse(ra);
-		ArrayUtils.reverse(rb);
-		rb = Arrays.copyOf(rb, degA + 1);
-		long[] q = mul(ra, inv(rb));
-		q = Arrays.copyOf(q, degA - degB + 1);
-		ArrayUtils.reverse(q);
-		return q;
+	    int degA = deg(a);
+	    int degB = deg(b);
+
+	    if (degB < 0) {
+	        throw new java.lang.ArithmeticException(
+	                "Division by zero polynomial");
+	    }
+	    if (degA < degB) {
+	        return new long[]{0};
+	    }
+
+	    int qLen = degA - degB + 1;
+	    long[] ra = new long[qLen];
+	    long[] rb = new long[qLen];
+
+	    // a と b の係数を最高次側から qLen 項だけ取る。
+	    for (int i = 0; i < qLen; i++) {
+	        ra[i] = a[degA - i];
+	    }
+	    for (int i = 0; i < Math.min(qLen, degB + 1); i++) {
+	        rb[i] = b[degB - i];
+	    }
+
+	    // 反転した商 = ra * inverse(rb) mod x^qLen
+	    long[] q = mul(ra, inv(rb));
+	    q = java.util.Arrays.copyOf(q, qLen);
+	    ArrayUtils.reverse(q);
+	    return q;
 	}
 
 	@Override
@@ -1622,8 +1749,33 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 	}
 
 	public long[] modFast(long[] a, long[] b) {
-		long[] q = divFast(a, b);
-		return resize(sub(a, mul(b, q)));
+	    int degA = deg(a);
+	    int degB = deg(b);
+
+	    if (degB < 0) {
+	        throw new java.lang.ArithmeticException(
+	                "Division by zero polynomial");
+	    }
+	    if (degA < degB) {
+	        return resize(a);
+	    }
+	    if (degB == 0) {
+	        return new long[]{0};
+	    }
+		
+	    long[] q = divFast(a, b);
+	    long[] bLow = Arrays.copyOf(b, degB);
+	    long[] qLow = Arrays.copyOf(q, Math.min(degB, q.length));
+	    long[] product = mul(bLow, qLow);
+	    long[] r = new long[degB];
+	    for (int i = 0; i < degB; i++) {
+	        long v = (i < a.length ? a[i] : 0) - (i < product.length ? product[i] : 0);
+	        if (v < 0) {
+	            v += mod;
+	        }
+	        r[i] = v;
+	    }
+	    return resize(r);
 	}
 
 	public class HalfGcdResult {

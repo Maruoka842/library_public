@@ -361,7 +361,7 @@ public final class JavaToCpp {
             for (CtTypeReference<?> superInterface : type.getSuperInterfaces()) {
                 if (isDeclaredType(superInterface)) {
                     String baseStr = rawCustomType(superInterface);
-                    if (!superInterface.getActualTypeArguments().isEmpty()) {
+                    if (!baseStr.contains("<") && !superInterface.getActualTypeArguments().isEmpty()) {
                         StringBuilder sb = new StringBuilder(baseStr).append('<');
                         List<CtTypeReference<?>> args = superInterface.getActualTypeArguments();
                         for (int i = 0; i < args.size(); i++) {
@@ -544,7 +544,7 @@ public final class JavaToCpp {
             s.append(' ');
             writeIndent();
             out.append(s);
-            emitBlock(constructor.getBody(), false);
+            emitBlock(constructor.getBody(), false, constructor.getParameters());
             out.append('\n');
         }
 
@@ -589,10 +589,13 @@ public final class JavaToCpp {
                 deferredMethods.add(method);
                 return;
             }
+            boolean previousStaticContext = currentStaticContext;
+            currentStaticContext = method.hasModifier(ModifierKind.STATIC);
             writeIndent();
             out.append(s).append(' ');
-            emitBlock(method.getBody(), false);
+            emitBlock(method.getBody(), false, method.getParameters());
             out.append('\n');
+            currentStaticContext = previousStaticContext;
         }
 
         /** Java の基底クラス実装で満たされるインターフェースメソッドを C++ 上で中継する。計算量: O(I M^2)。 */
@@ -617,7 +620,10 @@ public final class JavaToCpp {
                     s.append(rawCustomType(cls.getSuperclass())).append("::").append(id(required.getSimpleName())).append('(');
                     for (int i = 0; i < implementation.getParameters().size(); i++) {
                         if (i > 0) s.append(", ");
-                        s.append(id(implementation.getParameters().get(i).getSimpleName()));
+                        CtParameter<?> p = implementation.getParameters().get(i);
+                        String parameterType = type(p.getType());
+                        s.append(id(p.getSimpleName()));
+                        if (isPassByReferenceType(parameterType)) s.append("_const");
                     }
                     s.append("); }");
                     line(s.toString());
@@ -646,10 +652,18 @@ public final class JavaToCpp {
             }
             s.append(' ');
             out.append(s);
-            emitBlock(method.getBody(), false);
+            emitBlock(method.getBody(), false, method.getParameters());
             out.append("\n\n");
             currentType = previousType;
             currentStaticContext = previousStaticContext;
+        }
+
+        private static final Set<String> CPP_PRIMITIVE_TYPES = Set.of(
+                "void", "bool", "int8_t", "int16_t", "int", "long long", "float", "double", "char", "nullptr_t"
+        );
+
+        private boolean isPassByReferenceType(String parameterType) {
+            return !CPP_PRIMITIVE_TYPES.contains(parameterType);
         }
 
         /** パラメータ列 P を s へ加える。計算量: O(|P|)。 */
@@ -659,20 +673,38 @@ public final class JavaToCpp {
                 if (i > 0) s.append(", ");
                 CtParameter<?> p = parameters.get(i);
                 String parameterType = type(p.getType());
-                s.append(parameterType).append(' ').append(id(p.getSimpleName()));
+                if (isPassByReferenceType(parameterType)) {
+                    s.append("const ").append(parameterType).append("& ").append(id(p.getSimpleName())).append("_const");
+                } else {
+                    s.append(parameterType).append(' ').append(id(p.getSimpleName()));
+                }
             }
         }
 
         /** ブロック b を出力する。計算量: O(|b|)。 */
         // 未テスト
-        private void emitBlock(CtBlock<?> block, boolean indentOpening) {
+        private void emitBlock(CtBlock<?> block, boolean indentOpening, List<CtParameter<?>> parameters) {
             if (indentOpening) writeIndent();
             out.append("{\n");
             indent++;
+            if (parameters != null) {
+                for (CtParameter<?> p : parameters) {
+                    String parameterType = type(p.getType());
+                    if (isPassByReferenceType(parameterType)) {
+                        writeIndent();
+                        out.append("auto& ").append(id(p.getSimpleName())).append(" = const_cast<").append(parameterType)
+                           .append("&>(").append(id(p.getSimpleName())).append("_const);\n");
+                    }
+                }
+            }
             for (CtStatement statement : block.getStatements()) emitStatement(statement);
             indent--;
             writeIndent();
             out.append('}');
+        }
+
+        private void emitBlock(CtBlock<?> block, boolean indentOpening) {
+            emitBlock(block, indentOpening, null);
         }
 
         /** 文 s を出力する。計算量: O(|s|)。 */
@@ -923,7 +955,7 @@ public final class JavaToCpp {
             }
             if (e instanceof CtLiteral<?> literal) return literal(literal);
             if (e instanceof CtFieldAccess<?> field) return field(field);
-            if (e instanceof CtThisAccess<?>) return "shared_from_this()";
+            if (e instanceof CtThisAccess<?>) return "this->shared_from_this()";
             if (e instanceof CtSuperAccess<?>) return "this";
             if (e instanceof CtVariableAccess<?> variable) {
                 if (variable.getVariable() instanceof CtFieldReference<?> field) return fieldName(field);
@@ -1485,6 +1517,7 @@ public final class JavaToCpp {
                 case "compare" -> "jcompare" + arguments(args);
                 case "mismatch" -> "jmismatch" + arguments(args);
                 case "stream" -> "JStream" + arguments(args);
+                case "hashCode", "deepHashCode" -> "static_cast<int>(jhash(" + expr(args.get(0)) + "))";
                 case "equals", "deepEquals" -> "(" + expr(args.get(0)) + " == " + expr(args.get(1)) + ")";
                 case "toString", "deepToString" -> "jstr(" + expr(args.get(0)) + ")";
                 default -> throw new IllegalArgumentException("Unsupported Arrays method: " + name);
@@ -1573,8 +1606,13 @@ public final class JavaToCpp {
                 }
                 return type(targetType) + arguments(c.getArguments());
             }
-            if (c instanceof CtNewClass<?> anonymous && (q.equals("java.util.Comparator") || functionalType(c.getType()) != null || q.startsWith("java.util.function."))) {
-                return anonymousFunctional(anonymous);
+            if (c instanceof CtNewClass<?> anonymous) {
+                if (q.equals("java.util.Comparator") || functionalType(c.getType()) != null || q.startsWith("java.util.function.")) {
+                    return anonymousFunctional(anonymous);
+                }
+                if (c.getType() != null && c.getType().getTypeDeclaration() != null && (c.getType().getTypeDeclaration().isInterface() || c.getType().getTypeDeclaration().hasModifier(ModifierKind.ABSTRACT))) {
+                    return anonymousFunctional(anonymous);
+                }
             }
             String args = constructorArguments(c);
             if (isNonStaticNested(c.getType())) {
@@ -1647,41 +1685,69 @@ public final class JavaToCpp {
         private String anonymousFunctional(CtNewClass<?> c) {
             CtClass<?> anonymous = c.getAnonymousClass();
             if (anonymous == null) throw unsupported(c, "anonymous class");
-            CtMethod<?> method = anonymous.getMethods().stream()
+            List<CtMethod<?>> methods = anonymous.getMethods().stream()
                     .filter(m -> !m.isImplicit() && !m.getSimpleName().equals("equals"))
-                    .findFirst().orElseThrow(() -> unsupported(c, "anonymous method"));
-            String capture = c.getParent(CtMethod.class) == null ? "[]" : "[&]";
-            StringBuilder s = new StringBuilder(capture).append("(");
-            appendParameters(s, method.getParameters());
-            s.append(") ");
+                    .toList();
+            if (methods.size() == 1 && (functionalType(c.getType()) != null || c.getType().getQualifiedName().startsWith("java.util.function.") || c.getType().getQualifiedName().equals("java.util.Comparator"))) {
+                CtMethod<?> method = methods.get(0);
+                String capture = c.getParent(CtMethod.class) == null ? "[]" : "[&]";
+                StringBuilder s = new StringBuilder(capture).append("(");
+                appendParameters(s, method.getParameters());
+                s.append(") ");
 
-            boolean recursive = hasRecursiveCall(method);
-            CtMethod<?> previousAnonymousMethod = currentAnonymousMethod;
-            if (recursive) {
-                currentAnonymousMethod = method;
-            }
-
-            int length = out.length();
-            emitBlock(method.getBody(), false);
-            String block = out.substring(length);
-            out.setLength(length);
-
-            if (recursive) {
-                currentAnonymousMethod = previousAnonymousMethod;
-                StringBuilder rec = new StringBuilder("{\n");
-                rec.append("    auto __self = [&](auto&& __self, ");
-                appendParameters(rec, method.getParameters());
-                rec.append(") -> ").append(type(method.getType())).append(" ");
-                rec.append(block).append(";\n");
-                rec.append("    return __self(__self");
-                for (CtParameter<?> p : method.getParameters()) {
-                    rec.append(", ").append(id(p.getSimpleName()));
+                boolean recursive = hasRecursiveCall(method);
+                CtMethod<?> previousAnonymousMethod = currentAnonymousMethod;
+                if (recursive) {
+                    currentAnonymousMethod = method;
                 }
-                rec.append(");\n}");
-                return s.append(rec).toString();
+
+                int length = out.length();
+                emitBlock(method.getBody(), false);
+                String block = out.substring(length);
+                out.setLength(length);
+
+                if (recursive) {
+                    currentAnonymousMethod = previousAnonymousMethod;
+                    StringBuilder rec = new StringBuilder("{\n");
+                    rec.append("    auto __self = [&](auto&& __self, ");
+                    appendParameters(rec, method.getParameters());
+                    rec.append(") -> ").append(type(method.getType())).append(" ");
+                    rec.append(block).append(";\n");
+                    rec.append("    return __self(__self");
+                    for (CtParameter<?> p : method.getParameters()) {
+                        rec.append(", ").append(id(p.getSimpleName()));
+                    }
+                    rec.append(");\n}");
+                    return s.append(rec).toString();
+                }
+
+                return s.append(block).toString();
             }
 
-            return s.append(block).toString();
+            String outerRef = currentStaticContext || currentType == null ? "nullptr" : "this";
+            String capture = currentStaticContext || currentType == null ? "[]" : "[this]";
+            StringBuilder s = new StringBuilder(capture).append("() {\n");
+            s.append("    auto outer_ptr = ").append(outerRef).append(";\n");
+            s.append("    struct __Anon : public ").append(rawCustomType(c.getType())).append(" {\n");
+            s.append("        decltype(outer_ptr) outer;\n");
+            s.append("        __Anon(decltype(outer_ptr) o) : outer(o) {}\n");
+            CtType<?> previousType = currentType;
+            for (CtMethod<?> m : methods) {
+                currentType = anonymous;
+                s.append("        ").append(type(m.getType())).append(" ").append(id(m.getSimpleName())).append("(");
+                appendParameters(s, m.getParameters());
+                s.append(") override ");
+                int length = out.length();
+                emitBlock(m.getBody(), false, m.getParameters());
+                String block = out.substring(length);
+                out.setLength(length);
+                s.append(block).append("\n");
+            }
+            currentType = previousType;
+            s.append("    };\n");
+            s.append("    return static_pointer_cast<").append(rawCustomType(c.getType())).append(">(make_shared<__Anon>(outer_ptr));\n");
+            s.append("}()");
+            return s.toString();
         }
 
         /** 型アクセス t の C++ 表記を返す。計算量: O(|name(t)|)。 */
@@ -1833,8 +1899,11 @@ public final class JavaToCpp {
                     return "[](auto&&... args) { return " + targetStr + "::" + id(name) + "(std::forward<decltype(args)>(args)...); }";
                 }
             }
+            if (target instanceof CtThisAccess<?> || target == null) {
+                return "[this](auto&&... args) { return this->" + id(name) + "(std::forward<decltype(args)>(args)...); }";
+            }
             String separator = memberSeparator(target);
-            return expr(target) + separator + id(name);
+            return "[obj=" + expr(target) + "](auto&&... args) mutable { return obj" + separator + id(name) + "(std::forward<decltype(args)>(args)...); }";
         }
 
         /** 対象式 t の単純型名を返す。計算量: O(1)。 */
@@ -2178,8 +2247,11 @@ public final class JavaToCpp {
                 case "java.util.function.IntBinaryOperator" -> "function<int(int, int)>";
                 case "java.util.function.IntUnaryOperator" -> "function<int(int)>";
                 case "java.util.function.IntToLongFunction" -> "function<long long(int)>";
+                case "java.util.function.IntToDoubleFunction" -> "function<double(int)>";
                 case "java.util.function.LongToDoubleFunction" -> "function<double(long long)>";
+                case "java.util.function.LongToIntFunction" -> "function<int(long long)>";
                 case "java.util.function.IntFunction" -> "function<" + type(a.get(0)) + "(int)>";
+                case "java.util.function.LongFunction" -> "function<" + type(a.get(0)) + "(long long)>";
                 case "java.util.function.ObjIntConsumer" -> "function<void(" + type(a.get(0)) + ", int)>";
                 case "java.util.function.ObjLongConsumer" -> "function<void(" + type(a.get(0)) + ", long long)>";
                 default -> null;

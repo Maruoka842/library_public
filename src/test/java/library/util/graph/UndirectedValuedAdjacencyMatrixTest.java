@@ -9,7 +9,7 @@ public class UndirectedValuedAdjacencyMatrixTest {
 	private long[][] createEmptyMatrix(int N) {
 		long[][] A = new long[N][N];
 		for (int i = 0; i < N; i++) {
-			Arrays.fill(A[i], UndirectedValuedAdjacencyMatrix.INF);
+			Arrays.fill(A[i], UndirectedValuedAdjacencyMatrixGraph.INF);
 			A[i][i] = 0;
 		}
 		return A;
@@ -35,7 +35,7 @@ public class UndirectedValuedAdjacencyMatrixTest {
 		// Path to 2: 0 -> 4 -> 1 -> 2 has cost 4 + 2 = 6
 		// Path to 3: 0 -> 4 -> 1 -> 2 -> 3 has cost 6 + 1 = 7 (better than 0 -> 4 -> 1 -> 3 which is 4 + 5 = 9)
 		// Path to 4: 0 -> 4 has cost 3
-		long[] dist = UndirectedValuedAdjacencyMatrix.dijkstra(A, 0);
+		long[] dist = UndirectedValuedAdjacencyMatrixGraph.dijkstra(A, 0);
 		assertEquals(0, dist[0]);
 		assertEquals(4, dist[1]);
 		assertEquals(6, dist[2]);
@@ -45,10 +45,10 @@ public class UndirectedValuedAdjacencyMatrixTest {
 		// Check disconnected node behavior
 		long[][] A2 = createEmptyMatrix(3);
 		addEdge(A2, 0, 1, 5);
-		long[] dist2 = UndirectedValuedAdjacencyMatrix.dijkstra(A2, 0);
+		long[] dist2 = UndirectedValuedAdjacencyMatrixGraph.dijkstra(A2, 0);
 		assertEquals(0, dist2[0]);
 		assertEquals(5, dist2[1]);
-		assertEquals(UndirectedValuedAdjacencyMatrix.INF, dist2[2]);
+		assertEquals(UndirectedValuedAdjacencyMatrixGraph.INF, dist2[2]);
 	}
 
 	@Test
@@ -61,9 +61,9 @@ public class UndirectedValuedAdjacencyMatrixTest {
 		addEdge(A1, 2, 0, 4);
 
 		// Any vertex in the triangle should find the cycle with cost 2 + 3 + 4 = 9
-		assertEquals(9, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A1, 0));
-		assertEquals(9, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A1, 1));
-		assertEquals(9, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A1, 2));
+		assertEquals(9, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A1, 0));
+		assertEquals(9, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A1, 1));
+		assertEquals(9, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A1, 2));
 
 		// Case 2: No cycles (tree or forest)
 		int N2 = 4;
@@ -71,8 +71,8 @@ public class UndirectedValuedAdjacencyMatrixTest {
 		addEdge(A2, 0, 1, 2);
 		addEdge(A2, 1, 2, 3);
 		addEdge(A2, 2, 3, 4);
-		assertEquals(UndirectedValuedAdjacencyMatrix.INF, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A2, 0));
-		assertEquals(UndirectedValuedAdjacencyMatrix.INF, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A2, 1));
+		assertEquals(UndirectedValuedAdjacencyMatrixGraph.INF, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A2, 0));
+		assertEquals(UndirectedValuedAdjacencyMatrixGraph.INF, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A2, 1));
 
 		// Case 3: Multiple cycles, finding minimum weight cycle involving r
 		int N3 = 5;
@@ -87,10 +87,10 @@ public class UndirectedValuedAdjacencyMatrixTest {
 		addEdge(A3, 4, 0, 4);
 
 		// Min weight cycle at 0 should be 9 (Cycle 2 is cheaper)
-		assertEquals(9, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A3, 0));
+		assertEquals(9, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A3, 0));
 		// Min weight cycle at 1 should be 30 (only Cycle 1 contains 1)
-		assertEquals(30, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A3, 1));
+		assertEquals(30, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A3, 1));
 		// Min weight cycle at 3 should be 9
-		assertEquals(9, UndirectedValuedAdjacencyMatrix.findMinWeightCycleCostAt(A3, 3));
+		assertEquals(9, UndirectedValuedAdjacencyMatrixGraph.findMinWeightCycleCostAt(A3, 3));
 	}
 }

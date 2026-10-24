@@ -381,7 +381,11 @@ public class Graphs {
 		}
 	}
 	
-	
+	/**
+	 * infが存在しないと仮定して最もシンプルな三重ループ。
+	 * @param A
+	 * @return
+	 */
 	public static long[][] warshalFloyd(long[][] A) {
 		long[][]d=ArrayUtils.copy(A);
 		int N=d.length;

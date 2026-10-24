@@ -11,6 +11,7 @@ import java.util.Random;
 import java.util.TreeMap;
 import java.util.function.DoubleUnaryOperator;
 import java.util.function.LongToDoubleFunction;
+import java.util.function.LongUnaryOperator;
 import java.util.function.Predicate;
 
 import library.util.MathUtils.Result;
@@ -1945,6 +1946,190 @@ public class MathUtils {
 	}
 
 	
+	/**
+	 * 単調関数における 1 つのラン (値が一定な極大区間) を表す。
+	 *
+	 * @param l 極大区間の左端 (inclusive)
+	 * @param r 極大区間の右端 (inclusive)
+	 * @param value 区間における関数の値
+	 */
+	public record Run(long l, long r, long value) {
+		/**
+		 * ランに含まれる要素数 (r - l + 1) を返す。
+		 *
+		 * 計算量: O(1)
+		 * // 未テスト
+		 * @return ランの長さ
+		 */
+		public long count() {
+			return r - l + 1;
+		}
+
+		/**
+		 * ランに含まれる要素数 (r - l + 1) を返す。
+		 *
+		 * 計算量: O(1)
+		 * // 未テスト
+		 * @return ランの長さ
+		 */
+		public long length() {
+			return r - l + 1;
+		}
+	}
+
+	/**
+	 * 単調関数 f: [minX, maxX] -> Z （単調非減少または単調非増加）のランレングス圧縮を行う。
+	 *
+	 * <p>指数探索 (Doubling/Galloping 探索) と二分探索により、各ランの右端を効率的に探索する。
+	 * 関数 f は minX <= x <= maxX において単調（単調非減少または単調非増加）である必要がある。
+	 * 0 <= f(x) <= A のとき、計算量は O(A log(B / A)) である（B = maxX - minX + 1）。
+	 * minX > maxX の場合は空リストを返す。
+	 *
+	 * 計算量: O(A log(B / A))
+	 * // 未テスト
+	 * @param f 単調関数（単調非減少または単調非増加）
+	 * @param minX 定義域の最小値 (inclusive)
+	 * @param maxX 定義域の最大値 (inclusive)
+	 * @return ラン (l, r, value) のリスト
+	 */
+	public static ArrayList<Run> monotoneRunLengthCompress(LongUnaryOperator f, long minX, long maxX) {
+		//https://atcoder.jp/contests/abc480/submissions/80163704
+		if (minX > maxX) {
+			return new ArrayList<>();
+		}
+		ArrayList<Run> ret = new ArrayList<>();
+		long curr = minX;
+		while (curr <= maxX) {
+			long val = f.applyAsLong(curr);
+			long low = curr;
+
+			long step = 1;
+			while (curr + step <= maxX && f.applyAsLong(curr + step) == val) {
+				low = curr + step;
+				// step を 2 倍に更新すると残り範囲 (maxX - curr) を超えてしまうため、これ以上 step を倍増できない。
+				if (step > (maxX - curr) / 2) {
+					step *= 2;
+					break;
+				}
+				step *= 2;
+			}
+			// f(curr + step) != val または curr + step > maxX となる最小の step を元に、右端 r の上限を設定する。
+			long high = Math.min(maxX, curr + step - 1);
+
+			// low  : f(low) == val が確定している、現在のランの右端 r の下限 (f(low) == val)
+			// high : f(high + 1) != val または high == maxX である、現在のランの右端 r の上限 (r ∈ [low, high])
+			long ok = low;
+			long ng = high + 1;
+			while (ng - ok > 1) {
+				long mid = ok + (ng - ok) / 2;
+				if (f.applyAsLong(mid) == val) {
+					ok = mid;
+				} else {
+					ng = mid;
+				}
+			}
+			long r = ok;
+			ret.add(new Run(curr, r, val));
+
+			if (r == maxX) {
+				break;
+			}
+			curr = r + 1;
+		}
+		return ret;
+	}
+
+	/**
+	 * 単調関数 f: [minX, maxX] -> Z （単調非減少または単調非増加）において f(x) == k となる極大半開区間 [l, r) を求める。
+	 *
+	 * <p>関数 f は minX <= x <= maxX において単調（単調非減少または単調非増加）である必要がある。
+	 * 返り値は半開区間 [l, r) を表す {@link Run} (l, r, k) である。
+	 * 単調非減少の場合、定義域内の任意の x に対して以下を満たす:
+	 * <ul>
+	 *   <li>x < l : f(x) < k</li>
+	 *   <li>l <= x < r : f(x) == k</li>
+	 *   <li>x >= r : f(x) > k</li>
+	 * </ul>
+	 * 単調非増加の場合は不等号が反転する:
+	 * <ul>
+	 *   <li>x < l : f(x) > k</li>
+	 *   <li>l <= x < r : f(x) == k</li>
+	 *   <li>x >= r : f(x) < k</li>
+	 * </ul>
+	 * f(x) == k となる x が存在しない場合は l = r となり、k を挿入する境界を表す。
+	 * 全域で境界の手前の場合は (maxX + 1)、全域で境界の後の場合は minX を返す。
+	 *
+	 * 計算量: O(log(maxX - minX + 1))
+	 * // 未テスト
+	 * @param f 単調関数（単調非減少または単調非増加）
+	 * @param minX 定義域の最小値 (inclusive)
+	 * @param maxX 定義域の最大値 (inclusive, maxX < Long.MAX_VALUE)
+	 * @param k 検索する値
+	 * @return f(x) == k となる極大半開区間 [l, r)（不在時は l = r の境界を表す Run）
+	 */
+	public static Run monotoneEqualRange(LongUnaryOperator f, long minX, long maxX, long k) {
+		if (minX > maxX) {
+			return new Run(minX, minX, k);
+		}
+		long fMin = f.applyAsLong(minX);
+		long fMax = f.applyAsLong(maxX);
+
+		boolean isNonDecreasing = fMin <= fMax;
+		if (isNonDecreasing) {
+			// f(x) >= k となる最初の位置 l を二分探索
+			long ok = maxX + 1, ng = minX - 1;
+			while (ok - ng > 1) {
+				long mid = ng + (ok - ng) / 2;
+				if (f.applyAsLong(mid) >= k) {
+					ok = mid;
+				} else {
+					ng = mid;
+				}
+			}
+			long l = ok;
+
+			// f(x) > k となる最初の位置 r を二分探索
+			ok = maxX + 1;
+			ng = l - 1;
+			while (ok - ng > 1) {
+				long mid = ng + (ok - ng) / 2;
+				if (f.applyAsLong(mid) > k) {
+					ok = mid;
+				} else {
+					ng = mid;
+				}
+			}
+			long r = ok;
+			return new Run(l, r, k);
+		} else {
+			// f(x) <= k となる最初の位置 l を二分探索
+			long ok = maxX + 1, ng = minX - 1;
+			while (ok - ng > 1) {
+				long mid = ng + (ok - ng) / 2;
+				if (f.applyAsLong(mid) <= k) {
+					ok = mid;
+				} else {
+					ng = mid;
+				}
+			}
+			long l = ok;
+
+			// f(x) < k となる最初の位置 r を二分探索
+			ok = maxX + 1;
+			ng = l - 1;
+			while (ok - ng > 1) {
+				long mid = ng + (ok - ng) / 2;
+				if (f.applyAsLong(mid) < k) {
+					ok = mid;
+				} else {
+					ng = mid;
+				}
+			}
+			long r = ok;
+			return new Run(l, r, k);
+		}
+	}
+
 	static void tr(Object... objects) {
 		System.out.println(Arrays.deepToString(objects));
 	}

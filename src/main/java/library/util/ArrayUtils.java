@@ -1692,7 +1692,7 @@ public class ArrayUtils {
 		return b;
 	}
 	
-	public static double[] prefixSumFromZERO(double[] a) {
+	public static double[] prefixSumFromEmpty(double[] a) {
 		double[] b = new double[a.length + 1];
 		for (int i = 1; i < b.length; ++i) {
 			b[i] = b[i - 1] + a[i - 1];
@@ -1706,7 +1706,7 @@ public class ArrayUtils {
 	 * @param a
 	 * @return
 	 */
-	public static long[] prefixSumFromZERO(int[] a) {
+	public static long[] prefixSumFromEmpty(int[] a) {
 		long[] b = new long[a.length + 1];
 		for (int i = 1; i < b.length; ++i) {
 			b[i] = b[i - 1] + a[i - 1];

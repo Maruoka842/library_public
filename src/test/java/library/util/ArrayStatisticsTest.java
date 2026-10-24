@@ -85,6 +85,73 @@ public class ArrayStatisticsTest {
         }
     }
 
+    @Test
+    public void testLisWithoutElementEdgeCases() {
+        assertArrayEquals(new int[0], ArrayStatistics.lisWithoutElement(new int[0]));
+        assertArrayEquals(new int[0], ArrayStatistics.lisWithoutElement(new long[0]));
+
+        assertArrayEquals(new int[]{0}, ArrayStatistics.lisWithoutElement(new int[]{5}));
+        assertArrayEquals(new int[]{0}, ArrayStatistics.lisWithoutElement(new long[]{100L}));
+
+        assertArrayEquals(new int[]{1, 1, 1}, ArrayStatistics.lisWithoutElement(new int[]{2, 2, 2}));
+        assertArrayEquals(new int[]{3, 3, 3, 3}, ArrayStatistics.lisWithoutElement(new int[]{1, 2, 3, 4}));
+        assertArrayEquals(new int[]{1, 1, 1, 1}, ArrayStatistics.lisWithoutElement(new int[]{4, 3, 2, 1}));
+    }
+
+    @Test
+    public void testLisWithoutElementSpecific() {
+        int[] a1 = {3, 1, 4, 1, 5, 9, 2, 6};
+        int[] expected1 = solveLisWithoutElementNaive(a1);
+        assertArrayEquals(expected1, ArrayStatistics.lisWithoutElement(a1));
+
+        long[] a2 = {-10L, 50L, -10L, 20L, 100L, 30L};
+        int[] expected2 = solveLisWithoutElementNaive(a2);
+        assertArrayEquals(expected2, ArrayStatistics.lisWithoutElement(a2));
+    }
+
+    @Test
+    public void testLisWithoutElementStress() {
+        Random rand = new Random(12345);
+        for (int iter = 0; iter < 500; iter++) {
+            int n = rand.nextInt(30) + 1;
+            int[] aInt = new int[n];
+            long[] aLong = new long[n];
+            for (int i = 0; i < n; i++) {
+                int val = rand.nextInt(20) - 10;
+                aInt[i] = val;
+                aLong[i] = val;
+            }
+
+            int[] expected = solveLisWithoutElementNaive(aInt);
+            int[] actualInt = ArrayStatistics.lisWithoutElement(aInt);
+            int[] actualLong = ArrayStatistics.lisWithoutElement(aLong);
+
+            assertArrayEquals(expected, actualInt, "Mismatch int iteration " + iter);
+            assertArrayEquals(expected, actualLong, "Mismatch long iteration " + iter);
+        }
+    }
+
+    private int[] solveLisWithoutElementNaive(int[] a) {
+        int n = a.length;
+        int[] ans = new int[n];
+        for (int i = 0; i < n; i++) {
+            int[] b = new int[n - 1];
+            int idx = 0;
+            for (int j = 0; j < n; j++) {
+                if (j != i) {
+                    b[idx++] = a[j];
+                }
+            }
+            ans[i] = ArrayStatistics.LIS(b);
+        }
+        return ans;
+    }
+
+    private int[] solveLisWithoutElementNaive(long[] a) {
+        int[] b = ArrayUtils.compress(a);
+        return solveLisWithoutElementNaive(b);
+    }
+
     private long[] solveNaive(long[] a, long[][] queries) {
         int Q = queries.length;
         long[] ans = new long[Q];

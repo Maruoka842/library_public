@@ -233,6 +233,68 @@ public class ArrayStatistics {
 	}
 
 	/**
+	 * 各 0 <= i < N について、a[i] を除外した部分列における最長狭義単調増加部分列(LIS)の長さを計算する。
+	 *
+	 * 数学的定義:
+	 * N = |a| とし、各 i ∈ {0, 1, ..., N-1} に対して
+	 * ans[i] = LIS(a[0 ... i-1] ++ a[i+1 ... N-1])
+	 * を求める。
+	 *
+	 * 計算量: O(N log N) 時間、O(N) 空間
+	 *
+	 * @param a 対象の整数列 a
+	 * @return 各要素を除外したときの LIS の長さを格納した長さ N の配列
+	 */
+	// 未テスト
+	public static int[] lisWithoutElement(int[] a) {
+		int n = a.length;
+		if (n == 0) return new int[0];
+		int[] L = LISfixingEnd(a);
+		int[] R = LISfixingStart(a);
+		int K = 0;
+		for (int i = 0; i < n; i++) {
+			if (L[i] > K) {
+				K = L[i];
+			}
+		}
+		int[] C = new int[K + 1];
+		for (int i = 0; i < n; i++) {
+			if (L[i] + R[i] - 1 == K) {
+				C[L[i]]++;
+			}
+		}
+		int[] ans = new int[n];
+		for (int i = 0; i < n; i++) {
+			if (L[i] + R[i] - 1 == K && C[L[i]] == 1) {
+				ans[i] = K - 1;
+			} else {
+				ans[i] = K;
+			}
+		}
+		return ans;
+	}
+
+	/**
+	 * 各 0 <= i < N について、a[i] を除外した部分列における最長狭義単調増加部分列(LIS)の長さを計算する。
+	 *
+	 * 数学的定義:
+	 * N = |a| とし、各 i ∈ {0, 1, ..., N-1} に対して
+	 * ans[i] = LIS(a[0 ... i-1] ++ a[i+1 ... N-1])
+	 * を求める。
+	 *
+	 * 計算量: O(N log N) 時間、O(N) 空間
+	 *
+	 * @param a 対象の整数列 a
+	 * @return 各要素を除外したときの LIS の長さを格納した長さ N の配列
+	 */
+	// 未テスト
+	public static int[] lisWithoutElement(long[] a) {
+		if (a.length == 0) return new int[0];
+		int[] b = ArrayUtils.compress(a);
+		return lisWithoutElement(b);
+	}
+
+	/**
 	 * 各区間 {@code [i, j)} について、
 	 * {@code a[i]} を先頭、{@code a[j-1]} を末尾に必ず含む
 	 * 広義単調増加部分列の最大長を動的計画法で計算する。

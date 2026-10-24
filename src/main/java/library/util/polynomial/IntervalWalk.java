@@ -9,50 +9,36 @@ import library.util.MathUtils;
 public class IntervalWalk {
 
 	/**
-	 * 制限区間 0 <= x < M 内に終始とどまる歩行について、0 から maxN までのすべてのステップ数 n に対し、
-	 * 位置 k に到達する経路の重みの総和を一括して計算し、配列として返します。
+	 * 初期分布と移動重みで定まる歩行について、目標位置 {@code k} にちょうど
+	 * {@code n} ステップで到達する経路の重み総和を、{@code n = 0..maxN} について計算します。
+	 * 経路は、初期位置から目標位置までのすべての位置が {@code [0, M)} に含まれるものに限ります。
 	 *
-	 * <p>【数学的定義と関数の仕様】</p>
-	 * 以下の歩行モデルおよび初期分布のもとで、すべての中間ステップにおいて 0 <= x < M 内にとどまり、
-	 * 各 n in [0, maxN] について位置 k (0 <= k < M) に到達する歩行の重み総和 [x^k] C_reflected(x) A(x)^n を一括して計算します。
+	 * <p>対象は、1 ステップの移動量が {@code -1, 0, +1} の歩行です。
+	 * 初期位置 {@code i} の重みを {@code c_i}、移動量 0 の重みを {@code a_0}、
+	 * 移動量 {@code -1} と {@code +1} の重みをともに {@code a_1} とします。
+	 * {@code a_1} は係数演算の法の下で逆元を持つ必要があります。
+	 * 初期位置が {@code i} で移動量列が {@code s_1, ..., s_n} である経路の重みは
+	 * {@code c_i * a_(|s_1|) * ... * a_(|s_n|)} です。
 	 *
-	 * <p>1. <b>歩行モデル:</b></p>
-	 * <ul>
-	 *   <li>1ステップの移動重みを表す Laurent 多項式を A(x) = sum a_s * x^s とします。</li>
-	 *   <li>左右対称な歩行（a_s = a_(-s)、すなわち A(x) = A(x^-1)）を仮定します。</li>
-	 *   <li>y = A(x) とおいたとき、複数ある逆関数のうち y -> infinity において phi(y) -> 0 となる逆関数を x = phi(y) = A^-1(y) とします。</li>
-	 *   <li>w = 1/y とおき、この逆関数を w の冪級数 psi(w) = phi(1/w) と定義します。これは psi(0) = 0 を満たします。</li>
-	 * </ul>
+	 * <p>このオーバーロードでは、初期分布 {@code C(x) = sum(c_i * x^i)} と
+	 * 反転分布 {@code C_rev(x) = x^(M-1) * C(1/x)} を、それぞれ {@code psi(w)} に代入した
+	 * 冪級数の係数配列を受け取ります。これらの配列と {@code psi} は、対象の初期分布・移動重みに対応し、
+	 * 正しい結果を得るには必要な係数を含めてください。配列長が足りない場合、
+	 * 不足する係数は 0 として扱われ、自動的には計算されません。
 	 *
-	 * <p>2. <b>初期分布:</b></p>
-	 * <ul>
-	 *   <li>初期位置の分布多項式を C(x) = sum_(i=0)^(M-1) c_i * x^i とします。</li>
-	 *   <li>反転分布多項式を C_rev(x) = sum_(i=0)^(M-1) c_i * x^(M - 1 - i) とします。</li>
-	 *   <li>本メソッドに渡す C_psi は、合成された冪級数 C(psi(w)) mod w^N の係数配列です。</li>
-	 *   <li>本メソッドに渡す C_rev_psi は、合成された冪級数 C_rev(psi(w)) mod w^N の係数配列です。</li>
-	 * </ul>
-	 *
-	 * <p>3. <b>事前条件:</b></p>
-	 * - M > 0
-	 * - 0 <= k < M
-	 * - maxN >= 0
-	 * - psi.length >= N + 1 （ただし N = maxN + E + 1、E = M + k + 1 - j_min * D）
-	 * - C_psi.length >= N
-	 * - C_rev_psi.length >= N
-	 *
-	 * @param fp 多項式演算器
-	 * @param C_psi 冪級数 C(psi(w)) mod w^N の係数配列
-	 * @param C_rev_psi 冪級数 C_rev(psi(w)) mod w^N の係数配列
-	 * @param psi A(x) の逆関数 psi(w) = phi(1/w) の係数配列
-	 * @param M 区間の上限（ non-inclusive, 歩行可能範囲は 0 <= x < M ）
-	 * @param k 目標位置（ 0 <= k < M ）
-	 * @param maxN 歩行ステップ数の上限
-	 * @return インデックス n がステップ数 n に対応する重みの総和配列。サイズは maxN + 1
-	 *
-	 * 計算量: O(maxN log maxN)
-	 * // 未テスト
+	 * @param fp 係数演算に使う多項式演算器
+	 * @param C_psi {@code C(psi(w))} の係数配列。添字が {@code w} の次数に対応します
+	 * @param C_rev_psi {@code C_rev(psi(w))} の係数配列。添字が {@code w} の次数に対応します
+	 * @param psi 対象の移動重みに対応する冪級数 {@code psi(w)} の係数配列
+	 * @param M 区間の長さ。歩行可能な位置は {@code 0 <= x < M}
+	 * @param k 目標位置。{@code 0 <= k < M}
+	 * @param maxN 計算するステップ数の上限。{@code maxN >= 0}
+	 * @return {@code result[n]} が、ちょうど {@code n} ステップで位置 {@code k} に到達し、
+	 *         区間内にとどまる経路の重み総和を表す配列。長さは {@code maxN + 1}。
+	 *         {@code M <= 0}、{@code k} が範囲外、または {@code maxN < 0} の場合は空配列
+	 * @implNote この実装は未テストです。
 	 */
-	public static long[] solveVaryingN(PolynomialFpDynamic fp, long[] C_psi, long[] C_rev_psi, long[] psi, int M, long k, int maxN) {
+	public static long[] solveForAllStepCounts(PolynomialFpDynamic fp, long[] C_psi, long[] C_rev_psi, long[] psi, int M, long k, int maxN) {
 		if (M <= 0 || k < 0 || k >= M || maxN < 0) {
 			return new long[0];
 		}
@@ -183,48 +169,33 @@ public class IntervalWalk {
 	}
 
 	/**
-	 * 制限区間 0 <= x < M 内に終始とどまる歩行について、0 から maxN までのすべてのステップ数 n に対し、
-	 * 位置 k に到達する経路の重みの総和を一括して計算し、配列として返します。
-	 * 本オーバーロードは、移動 Laurent 多項式 A(x) の非負部分の係数 a_i (i >= 0) の配列である A_poly を受け取り、
-	 * 逆関数 psi(w) と初期分布の合成 C_psi, C_rev_psi を内部的に O(N log^2 N) の多項式合成によって自動計算します。
+	 * 初期分布と移動重みで定まる歩行について、目標位置 {@code k} にちょうど
+	 * {@code n} ステップで到達する経路の重み総和を、{@code n = 0..maxN} について計算します。
+	 * 経路は、初期位置から目標位置までのすべての位置が {@code [0, M)} に含まれるものに限ります。
 	 *
-	 * <p>【数学的定義と関数の仕様】</p>
-	 * 以下の歩行モデルおよび初期分布のもとで、各 n in [0, maxN] について [x^k] C_reflected(x) A(x)^n の重み総和を一括して計算します。
+	 * <p>{@code C[i]} は位置 {@code i} から開始する重みを表します。
+	 * {@code A_poly = [a_0, a_1]} は移動重みを表し、移動量 0 の重みは {@code a_0}、
+	 * 移動量 {@code -1} と {@code +1} の重みはともに {@code a_1} です。
+	 * したがって、初期位置が {@code i} で移動量列が {@code s_1, ..., s_n} である経路の重みは
+	 * {@code C[i] * a_(|s_1|) * ... * a_(|s_n|)} です。
+	 * 区間外へ出る経路は、重み総和に含めません。
 	 *
-	 * <p>1. <b>歩行モデル:</b></p>
-	 * <ul>
-	 *   <li>1ステップの移動重みを表す左右対称な Laurent 多項式 A(x) = sum_(i=-S)^(S) a_i x^i（ただし a_i = a_(-i)）に対し、
-	 *       非負の次数 i >= 0 の係数 a_i のみを並べた配列 A_poly = [a_0, a_1, ..., a_S] を受け取ります。</li>
-	 *   <li>歩行の対称性より、シフト多項式 A_poly_symmetric(x) = A(x) * x^S の次数は 2S となり、S = A_poly.length - 1 と一意に定まります。</li>
-	 *   <li>F(x) = x^S / A_poly_symmetric(x) とおいたとき、F(x) は F(0) = 0, F'(0) != 0 を満たします。</li>
-	 *   <li>w = F(x) とおき、その合成逆関数を psi(w) = F^-1(w) と定義します。保存次数 psi(0) = 0 を満たします。</li>
-	 * </ul>
+	 * <p>{@code C} の長さは {@code M} 以下とし、長さが {@code M} 未満の場合、指定されていない位置の
+	 * 初期重みは 0 として扱います。{@code A_poly.length == 2} とし、{@code A_poly[1]} は
+	 * 係数演算の法の下で逆元を持つ必要があります。
 	 *
-	 * <p>2. <b>初期分布:</b></p>
-	 * <ul>
-	 *   <li>初期位置の分布多項式を C(x) = sum_(i=0)^(M-1) c_i * x^i とします。</li>
-	 *   <li>反転分布多項式を C_rev(x) = sum_(i=0)^(M-1) c_i * x^(M - 1 - i) とします。</li>
-	 * </ul>
-	 *
-	 * <p>3. <b>事前条件:</b></p>
-	 * - M > 0
-	 * - 0 <= k < M
-	 * - maxN >= 0
-	 * - A_poly.length >= 2 （対称歩行かつ S >= 1）
-	 * - C.length <= M
-	 *
-	 * @param fp 多項式演算器
-	 * @param C 0-based 初期分布多項式の係数配列
-	 * @param A_poly A(x) = sum a_i x^i における非負の次数 i >= 0 の係数配列 [a_0, a_1, ..., a_S]
-	 * @param M 区間の上限（ non-inclusive, 歩行可能範囲は 0 <= x < M ）
-	 * @param k 目標位置（ 0 <= k < M ）
-	 * @param maxN 歩行ステップ数の上限
-	 * @return インデックス n がステップ数 n に対応する重みの総和配列。サイズは maxN + 1
-	 *
-	 * 計算量: O(maxN log^2 maxN + M log M)
-	 * // 未テスト
+	 * @param fp 係数演算に使う多項式演算器
+	 * @param C 初期位置ごとの重み。{@code C[i]} が位置 {@code i} の初期重みを表します。長さは {@code M} 以下
+	 * @param A_poly 移動量 0 の重み {@code a_0} と、移動量 {@code -1, +1} の重み {@code a_1}。長さは 2
+	 * @param M 区間の長さ。歩行可能な位置は {@code 0 <= x < M}
+	 * @param k 目標位置。{@code 0 <= k < M}
+	 * @param maxN 計算するステップ数の上限。{@code maxN >= 0}
+	 * @return {@code result[n]} が、ちょうど {@code n} ステップで位置 {@code k} に到達し、
+	 *         区間内にとどまる経路の重み総和を表す配列。長さは {@code maxN + 1}。
+	 *         {@code M <= 0}、{@code k} が範囲外、または {@code maxN < 0} の場合は空配列
+	 * @implNote この実装は未テストです。
 	 */
-	public static long[] solveVaryingN(PolynomialFpDynamic fp, long[] C, long[] A_poly, int M, long k, int maxN) {
+	public static long[] solveForAllStepCounts(PolynomialFpDynamic fp, long[] C, long[] A_poly, int M, long k, int maxN) {
 		if (M <= 0 || k < 0 || k >= M || maxN < 0) {
 			return new long[0];
 		}
@@ -265,36 +236,32 @@ public class IntervalWalk {
 		long[] C_psi = fp.comp(C_new, psi, N);
 		long[] C_rev_psi = fp.comp(C_rev, psi, N);
 
-		return solveVaryingN(fp, C_psi, C_rev_psi, psi, M, k, maxN);
+		return solveForAllStepCounts(fp, C_psi, C_rev_psi, psi, M, k, maxN);
 	}
 
 	/**
-	 * 制限区間 0 <= x < M 内に終始とどまる歩行について、固定されたステップ数 n に対し、
-	 * すべての目標位置 k in [0, M) に到達する経路の重みの総和を一括して計算し、配列として返します。
-	 * 本メソッドは、多項式ダブリング（繰り返し二乗法）を用いて歩行多項式 A(x)^n mod (x^D - 1) を O(M log M log n) で計算します。
+	 * 固定されたステップ数 {@code n} について、各目標位置 {@code k} に到達する歩行の重み総和を一括計算します。
 	 *
-	 * <p>【数学的定義と関数の仕様】</p>
-	 * 左右対称なステップ移動多項式 A(x) = sum a_s * x^s （a_s = a_(-s)）および
-	 * 初期分布多項式 C(x) = sum_(i=0)^(M-1) c_i * x^i に対し、
-	 * 固定された n に対する各 k in [0, M) の制限付き歩行数 [x^k] C_reflected(x) A(x)^n を一括して計算します。
+	 * <p>初期位置 {@code i} の重みを {@code C[i]}、移動量 {@code s} の重みを {@code a_s} とします。
+	 * 移動多項式は左右対称、すなわち {@code a_s = a_{-s}} であるものとし、
+	 * {@code A_poly = [a_0, a_1, ..., a_S]} に非負次数側の係数を渡します。
+	 * 初期分布の長さが {@code M} 未満の場合、指定されていない位置の初期重みは 0 として扱います。
 	 *
-	 * <p>【事前条件】</p>
-	 * - M > 0
-	 * - n >= 0
-	 * - A_poly.length >= 2 （対称歩行かつ S >= 1）
-	 * - C.length <= M
+	 * <p>多項式を {@code x^D - 1}（{@code D = 2(M + 1)}）で剰余縮約し、
+	 * 繰り返し二乗法で {@code n} 乗を計算した後、反射原理に基づいて各位置の係数を取り出します。
 	 *
-	 * @param fp 多項式演算器
-	 * @param C 0-based 初期分布多項式の係数配列
-	 * @param A_poly A(x) = sum a_i x^i における非負の次数 i >= 0 の係数配列 [a_0, a_1, ..., a_S]
-	 * @param M 区間の上限（ non-inclusive, 歩行可能範囲は 0 <= x < M ）
-	 * @param n 固定された歩行ステップ数
-	 * @return インデックス k が目標位置 k に対応する重みの総和配列。サイズは M
+	 * @param fp 係数演算に使う多項式演算器
+	 * @param C 初期位置ごとの重み。{@code C[i]} が位置 {@code i} の初期重みを表します。長さは {@code M} 以下
+	 * @param A_poly 移動多項式の非負次数側の係数 {@code [a_0, a_1, ..., a_S]}。長さは 2 以上
+	 * @param M 区間の長さ。歩行可能な位置は {@code 0 <= x < M}
+	 * @param n ステップ数。{@code n >= 0}
+	 * @return {@code result[k]} が {@code n} ステップで位置 {@code k} に到達する重み総和を表す配列。
+	 *         長さは {@code M}。{@code M <= 0} の場合は空配列、{@code n < 0} の場合は長さ {@code M} のゼロ配列
 	 *
-	 * 計算量: O(M log M log n)
-	 * // 未テスト
+	 * @implNote 計算量は、多項式乗算が {@code O(M log M)} の場合 {@code O(M log M log(n + 1))} です。
+	 *           この実装は未テストです。
 	 */
-	public static long[] solveVaryingK(PolynomialFpDynamic fp, long[] C, long[] A_poly, int M, long n) {
+	public static long[] solveForAllPositions(PolynomialFpDynamic fp, long[] C, long[] A_poly, int M, long n) {
 		//https://atcoder.jp/contests/abc309/submissions/77707406
 		if (M <= 0) {
 			return new long[0];

@@ -40,8 +40,12 @@ public class LongValueGraph {
 			int a = sc.nextInt() - 1;
 			int b = sc.nextInt() - 1;
 			long cost = sc.nextLong();
-			graph.adj[a].add(new Edge(a, b, cost));
-			graph.adj[b].add(new Edge(b, a, cost));
+			if (a == b) {
+				graph.adj[a].add(new Edge(a, b, cost));
+			} else {
+				graph.adj[a].add(new Edge(a, b, cost));
+				graph.adj[b].add(new Edge(b, a, cost));
+			}
 		}
 		return graph;
 	}
