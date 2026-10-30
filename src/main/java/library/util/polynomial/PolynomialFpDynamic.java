@@ -1051,6 +1051,102 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 		return res;
 	}
 
+	// 未テスト
+	/**
+	 * F(x) = Σ_[i=0..n-1] a_i x^b_i (d + e x)^c_i の係数列を返す。
+	 *
+	 * <p>D = max_i(b_i + c_i)、L = 2^ceil(log_2(D + 1))、s = max(1, floor(sqrt(n log_2 n)))、
+	 * Q = floor(max_i(c_i) / s) + 1 とする。計算量は NTT 使用時 O(n log n + Σ_i c_i + QL + min(Q, n)L log L)、
+	 * mod または L が NTT に非対応の場合は例外を投げる。
+	 *
+	 * @param a 各項の係数 a_i の配列
+	 * @param b 各項の指数 b_i (b_i >= 0) の配列
+	 * @param c 各項の指数 c_i (c_i >= 0) の配列
+	 * @param d 二項式の定数項
+	 * @param e 二項式の一次係数
+	 * @return 展開された多項式 F(x) の係数配列
+	 * @throws IllegalArgumentException mod または変換長が NTT に対応しない場合
+	 */
+	public long[] sumPowerProductsBySqrtDecomposition(long[] a, int[] b, int[] c, long d, long e) {
+		if (a == null || b == null || c == null)
+			throw new NullPointerException();
+		if (a.length != b.length || a.length != c.length)
+			throw new IllegalArgumentException("Arrays must have the same length");
+		int n = a.length;
+		if (n == 0) return new long[0];
+		for (int i = 0; i < n; i++) {
+			if (b[i] < 0 || c[i] < 0) throw new IllegalArgumentException("Exponents must be non-negative");
+		}
+		d = fp.reduce(d);
+		e = fp.reduce(e);
+		int maxDegree = 0;
+		int maxC = 0;
+		for (int i = 0; i < n; i++) {
+			maxDegree = Math.max(maxDegree, b[i] + c[i]);
+			maxC = Math.max(maxC, c[i]);
+		}
+		int sBlock = Math.max(1, (int)Math.sqrt(n * (Math.log(Math.max(2, n)) / Math.log(2))));
+		sBlock = maxC == 0 ? 1 : Math.min(sBlock, maxC);
+		int qCount = maxC / sBlock + 1;
+		int length = 1;
+		while (length < maxDegree + 1 || length < sBlock + 1) length <<= 1;
+		boolean canNtt = isNTTFriendly && Integer.numberOfTrailingZeros(length) <= maxPow2;
+		if (!canNtt)
+			throw new IllegalArgumentException("Modulus or transform length is not supported by NTT");
+
+		fp.expand(sBlock + 1);
+		// c_i = q_i*s + r_i と分け、q_i ごとに項をまとめる。
+		@SuppressWarnings("unchecked")
+		List<Integer>[] groups = new ArrayList[qCount];
+		for (int q = 0; q < qCount; q++) groups[q] = new ArrayList<>();
+		for (int i = 0; i < n; i++) groups[c[i] / sBlock].add(i);
+
+		// H(x) = (d + e*x)^s
+		long[] H = new long[length];
+		if (d == 0) H[sBlock] = MathUtils.modPow(e, sBlock, mod);
+		else {
+			long w = MathUtils.modPow(d, sBlock, mod);// d^s
+			long eOverD = e * fp.inv(d) % mod;// e/d
+			for (int j = 0; j <= sBlock; j++) {
+				H[j] = w;// s!/(j!(s-j)!) d^(s-j)e^j
+				if (j < sBlock) w = w * (sBlock - j) % mod * fp.inv(j + 1) % mod * eOverD % mod;
+			}
+		}
+		prepareRoots(length);
+		// HをFFT
+		fftToBitReversed(H, length);
+		// NTT 領域で U <- U*H + P_q を q の降順に計算する。
+		long[] U = new long[length];
+		boolean hasValue = false;
+		for (int q = qCount - 1; q >= 0; q--) {
+			if (hasValue) for (int k = 0; k < length; k++) U[k] = U[k] * H[k] % mod;
+			List<Integer> group = groups[q];
+			if (!group.isEmpty()) {
+				// P_q(x) = Σ_(i:q_i=q) a_i*x^b_i*(d+e*x)^r_i を NTT 加算する。
+				long[] P = new long[length];
+				for (int i : group) {
+					int r = c[i] - q * sBlock;
+					long ai = fp.reduce(a[i]);
+					if (d == 0) P[b[i] + r] = (P[b[i] + r] + ai * MathUtils.modPow(e, r, mod)) % mod;
+					else {
+						long w = ai * MathUtils.modPow(d, r, mod) % mod, eOverD = e * fp.inv(d) % mod;
+						for (int j = 0; j <= r; j++) {
+							P[b[i] + j] = (P[b[i] + j] + w) % mod;
+							if (j < r) w = w * (r - j) % mod * fp.inv(j + 1) % mod * eOverD % mod;
+						}
+					}
+				}
+				fftToBitReversed(P, length);
+				for (int k = 0; k < length; k++) U[k] = (U[k] + P[k]) % mod;
+				hasValue = true;
+			}
+		}
+		// 全ブロックを合算した後、一度だけ逆 NTT して係数列に戻す。
+		ifftFromBitReversed(U, length);
+		int finalDegree = deg(U);
+		return finalDegree < 0 ? new long[0] : Arrays.copyOf(U, finalDegree + 1);
+	}
+
 	/**
 	 * PL[f](x) = sum_(k=1)^(N-1) (mu(k) / k) * log(f(x^k)) mod x^N (N = f.length,
 	 * mu(k) はメビウス関数)
@@ -7605,6 +7701,94 @@ public class PolynomialFpDynamic extends PolynomialZnDynamic
 			ans[i] = proj[n - i];
 		}
 		return ans;
+	}
+
+	/**
+	 * 多項式 f(x), g(x) と非負整数列 A, B, C に対し、総和 P(x) = sum_(i=0)^(N-1) A_i f(x)^(B_i) g(x)^(C_i) mod mod を計算する。
+	 *
+	 * 階差の総和 sum_(i=0)^(N-2) (|B_(i+1) - B_i| + |C_(i+1) - C_i|) = O(N) であるとき、
+	 * 計算量: O(D log N log D)
+	 * ここで N は要素数、D は出力多項式の次数
+	 *
+	 * @param f 多項式 f(x) の係数配列
+	 * @param g 多項式 g(x) の係数配列
+	 * @param A 係数列 A_0, ..., A_(N-1)
+	 * @param B 指数列 B_0, ..., B_(N-1)
+	 * @param C 指数列 C_0, ..., C_(N-1)
+	 * @return 総和多項式 P(x)
+	 */
+	// 未テスト
+	public long[] sumPowerProductsByBoundedVariation(long[] f, long[] g, long[] A, int[] B, int[] C) {
+		if (A == null || B == null || C == null || f == null || g == null) {
+			throw new NullPointerException();
+		}
+		int N = A.length;
+		if (B.length != N || C.length != N) {
+			throw new IllegalArgumentException("Arrays A, B, C must have the same length");
+		}
+		if (N == 0) {
+			return new long[0];
+		}
+		for (int i = 0; i < N; i++) {
+			if (B[i] < 0 || C[i] < 0) {
+				throw new IllegalArgumentException("Exponents must be non-negative");
+			}
+		}
+
+		if (N == 1) {
+			long[] fPow = powFull(f, (int) B[0]);
+			long[] gPow = powFull(g, (int) C[0]);
+			long[] prod = mul(fPow, gPow);
+			long reducedA = fp.reduce(A[0]);
+			return mul(prod, reducedA);
+		}
+
+		ProductTreeSum pts = new ProductTreeSum(N, this);
+
+		long wB = B[0];
+		long wC = C[0];
+
+		for (int i = 0; i < N - 1; i++) {
+			long dB = B[i + 1] - B[i];
+			long dC = C[i + 1] - C[i];
+
+			long uB = Math.max(dB, 0);
+			long vB = Math.max(-dB, 0);
+
+			long uC = Math.max(dC, 0);
+			long vC = Math.max(-dC, 0);
+
+			wB -= vB;
+			wC -= vC;
+
+			long[] uPoly = mul(powFull(f, (int) uB), powFull(g, (int) uC));
+			long[] vPoly = mul(powFull(f, (int) vB), powFull(g, (int) vC));
+
+			pts.setL(i, uPoly);
+			pts.setR(i + 1, vPoly);
+		}
+
+		long[][] h = new long[N][];
+		for (int i = 0; i < N; i++) {
+			long reducedA = fp.reduce(A[i]);
+			h[i] = new long[] { reducedA };
+		}
+
+		long[] res = pts.calc(h);
+
+		if (wB >= 0) {
+			res = mul(res, powFull(f, (int) wB));
+		} else {
+			res = div(res, powFull(f, (int) -wB));
+		}
+
+		if (wC >= 0) {
+			res = mul(res, powFull(g, (int) wC));
+		} else {
+			res = div(res, powFull(g, (int) -wC));
+		}
+
+		return res;
 	}
 
 	static void tr(Object... objects) {

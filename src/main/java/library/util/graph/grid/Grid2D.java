@@ -44,10 +44,11 @@ public class Grid2D {
 	}
 	
 	Grid2DVertex vertexArray[]; 
-	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)*/
+	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)。DRUL*/
 	public static int[] dh = new int[] {1,0,-1,0};
-	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)*/
+	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)。DRUL*/
 	public static int[] dw = new int[] {0,1,0,-1};
+	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)。DRUL*/
 	public static char[] dir = new char[] {'D', 'R', 'U', 'L'};
 
 	/**

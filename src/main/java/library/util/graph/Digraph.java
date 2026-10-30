@@ -373,10 +373,10 @@ public class Digraph {
 	 * という条件の元で頂点の全順序 v[0] <= v[1] <= .. <= v[n-1] を定め、vを返す。 
 	 * つまり小さい方から大きい方へ辺があるとする。
 	 * DAGでない場合エラー。複数のtopological sortがあるときは辞書順最小を返す。
-	 * https://atcoder.jp/contests/abc223/submissions/73241640
 	 * @return
 	 */
 	public int[] lexsmallestTopologicalOrder() {
+		//https://atcoder.jp/contests/abc223/submissions/73241640
 		int[] inDegrees = inDegrees();
 		PriorityQueue<Integer> que = new PriorityQueue<>();
 		for (int i  = 0; i < N; ++i) {

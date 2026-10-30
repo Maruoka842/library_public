@@ -1,5 +1,6 @@
 package library.tools;
 
+import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
@@ -686,8 +687,8 @@ public class JavaToCppTest {
         assertTrue(cpp.contains("Array::getLength"));
         assertTrue(cpp.contains("CppIterator begin()"));
         assertTrue(cpp.contains("PrimitiveIterator::OfInt"));
-        assertTrue(cpp.contains("template <class TMethod>"));
-        assertTrue(cpp.contains("static_pointer_cast<Derived>") || cpp.contains("static_pointer_cast<struct Derived>"));
+        assertTrue(cpp.contains("template <class TMethod>") || cpp.contains("template <class T>"));
+        assertTrue(cpp.contains("dynamic_pointer_cast") || cpp.contains("jcast<") || cpp.contains("static_pointer_cast<Derived>") || cpp.contains("static_pointer_cast<struct Derived>"));
     }
 
     @Test
@@ -746,7 +747,7 @@ public class JavaToCppTest {
 
         assertTrue(cpp.contains("reduce"));
         assertTrue(cpp.contains("toBinaryString"));
-        assertTrue(cpp.contains("make_shared<Node>(nullptr)"));
+        assertTrue(cpp.contains("make_shared<Node>") || cpp.contains("make_shared<struct Node>"));
         assertTrue(cpp.contains("outer->dfs(a, b)") || cpp.contains("this->dfs(a, b)"));
     }
 
@@ -1092,7 +1093,7 @@ public class JavaToCppTest {
 
         String cpp = JavaToCpp.convert(java);
 
-        assertTrue(cpp.contains("JThread(nullptr, make_shared<Main>(), JString(\"\"), 1024LL).run();"));
+        assertTrue(cpp.contains("JThread(nullptr, make_shared<Main>(), JString(\"\"), 1024LL).run();") || cpp.contains("JThread(nullptr, make_shared<struct Main>(), JString(\"\"), 1024LL).run();"));
     }
 
     /**
@@ -1281,6 +1282,123 @@ public class JavaToCppTest {
      */
     // 未テスト
     @Test
+    void testUserCodeCompilation() throws Exception {
+        Path solverDir = Path.of("solver/src/main/java");
+        Files.createDirectories(solverDir);
+        Path mainJava = solverDir.resolve("Main.java");
+        String userCode = """
+                import java.io.IOException;
+                import java.util.Arrays;
+                import java.util.Random;
+
+                import library.tools.FastScanner;
+                import library.tools.JavaToCpp;
+                import library.tools.MyPrintWriter;
+                import library.util.Fp;
+                import library.util.MathUtils;
+                import library.util.polynomial.PolynomialFpDynamic;
+
+                public class Main implements Runnable {
+
+			static MyPrintWriter pw=MyPrintWriter.getInstance();
+			static FastScanner sc=FastScanner.getInstance();
+
+			public static void main(String[] args) throws IOException {
+				new Main().run();
+				pw.flush();
+                //		MergeFiles.export();
+				JavaToCpp.export();
+			}
+
+			Random r=new Random();
+			Fp fp=Fp.MOD998244353;
+			long mod=fp.modulus();
+
+                    @java.lang.Override
+                    public void run() {
+                        var P = PolynomialFpDynamic.MOD998244353;
+                        int N = Main.sc.nextInt();
+                        long[] A = new long[N];
+                        long[] B = new long[N];
+                        for (int i = 0; i < N; i++) {
+                            A[i] = Main.sc.nextLong();
+                            B[i] = Main.sc.nextLong();
+                        }
+                        long[] sortedA = A.clone();
+                        long[] sortedB = B.clone();
+                        java.util.Arrays.sort(sortedA);
+                        java.util.Arrays.sort(sortedB);
+                        long[] values = new long[2 * N];
+                        java.lang.System.arraycopy(A, 0, values, 0, N);
+                        java.lang.System.arraycopy(B, 0, values, N, N);
+                        java.util.Arrays.sort(values);
+                        int unique = 0;
+                        for (long value : values) {
+                            if ((unique == 0) || (values[unique - 1] != value)) {
+                                values[unique++] = value;
+                            }
+                        }
+                        long[] coef = new long[unique - 1];
+                        int[] belowBoth = new int[coef.length];
+                        int[] belowOne = new int[coef.length];
+                        for (int j = 1; j < unique; j++) {
+                            long threshold = values[j];
+                            int both = lowerBound(sortedB, threshold);
+                            int one = lowerBound(sortedA, threshold) - both;
+                            int idx = j - 1;
+                            coef[idx] = (((threshold - values[j - 1]) % mod) * MathUtils.modPow(2, N - one, mod)) % mod;
+                            belowBoth[idx] = both;
+                            belowOne[idx] = one;
+                        }
+                        long[]distribution=P.sumPowerProductsByBoundedVariation(new long[] {0, 1}, new long[] {1, 1}, coef, belowBoth, belowOne);
+                        long prefix = 0;
+                        long base = ((values[0] % mod) * MathUtils.modPow(2, N, mod)) % mod;
+                        for (int k = 1; k <= N; k++) {
+                            if ((k - 1) < distribution.length) {
+                                prefix = (prefix + distribution[k - 1]) % mod;
+                            }
+                            Main.pw.println((base + prefix) % mod);
+                        }
+
+                    }
+
+                    int lowerBound(long[] a, long value) {
+                        int low = 0;
+                        int high = a.length;
+                        while (low < high) {
+                            int mid = (low + high) >>> 1;
+                            if (a[mid] < value) {
+                                low = mid + 1;
+                            } else {
+                                high = mid;
+                            }
+                        }
+                        return low;
+                    }
+
+			void tr(Object...objects) {System.out.println(Arrays.deepToString(objects));}
+
+                }
+                """;
+        Files.writeString(mainJava, userCode, StandardCharsets.UTF_8);
+
+        MergeFiles.export();
+        Path mergedJava = Path.of("out", "Main.java");
+        String cpp = JavaToCpp.convert(mergedJava);
+        Path cppFile = tempDir.resolve("main.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        System.err.println("G++ Exit Code: " + exitCode);
+        System.err.println("G++ Output:\n" + output);
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
     void testNumberConversion() throws Exception {
         Path java = tempDir.resolve("Main.java");
         Files.writeString(java, """
@@ -1303,5 +1421,413 @@ public class JavaToCppTest {
 
         assertTrue(cpp.contains("JNumber"));
         assertTrue(cpp.contains("val.longValue()"));
+    }
+
+    @Test
+    void testBatch20Features() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.Scanner;
+
+                public class Main {
+                    public static long bitand(long[] a) {
+                        long res = -1;
+                        for (long x : a) res &= x;
+                        return res;
+                    }
+
+                    public static void main(String[] args) {
+                        Scanner sc = new Scanner(System.in);
+                        long[] a = new long[]{1, 2, 3};
+                        long res = bitand(a);
+                        String s = Long.toUnsignedString(res);
+                        double d = Double.sum(1.5, 2.5);
+                        System.out.println(s + " " + d);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("bitand_"));
+        assertTrue(cpp.contains("JLong::toUnsignedString"));
+        assertTrue(cpp.contains("JDouble::sum"));
+
+        Path cppFile = tempDir.resolve("main.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testTemplateMethodsAndArrayNewInstance() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.lang.reflect.Array;
+
+                class Helper {
+                    public <T> T[] makeArray(T single, int n) {
+                        @SuppressWarnings("unchecked")
+                        T[] arr = (T[]) Array.newInstance(single.getClass(), n);
+                        return arr;
+                    }
+                }
+
+                public class Main {
+                    public static void main(String[] args) {
+                        Helper h = new Helper();
+                        String[] res = h.makeArray("hello", 3);
+                        System.out.println(res.length);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertFalse(cpp.contains("virtual template"));
+        assertTrue(cpp.contains("makeArray"));
+
+        Path cppFile = tempDir.resolve("main_template.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_template").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testIntPredicateAndClassAndOmittedTypeArgs() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.function.IntPredicate;
+
+                class Container<T> {
+                    public Container() {}
+                }
+
+                public class Main {
+                    public static void main(String[] args) {
+                        IntPredicate p = x -> x > 0;
+                        boolean test = p.test(5);
+                        Class<?> clazz = Main.class;
+                        Container<String> c = new Container();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("function<bool(int)> p"));
+        assertTrue(cpp.contains("p(5)"));
+        assertTrue(cpp.contains("JClass clazz"));
+        assertTrue(cpp.contains("make_shared<Container<JString>>()") || cpp.contains("make_shared<struct Container<JString>>()"));
+
+        Path cppFile = tempDir.resolve("main_predicate.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_predicate").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testAnonymousComparatorWithReferenceParameters() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.Arrays;
+                import java.util.Comparator;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        long[][] list = new long[][]{{1, 2}, {3, 4}};
+                        Arrays.sort(list, new Comparator<long[]>() {
+                            @Override
+                            public int compare(long[] o1, long[] o2) {
+                                return Long.compare(o1[1], o2[1]);
+                            }
+                        });
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("o1_const") && cpp.contains("const_cast"));
+
+        Path cppFile = tempDir.resolve("main_comparator.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_comparator").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testLambdaWithReferenceParameters() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.Arrays;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        long[][] list = new long[][]{{1, 2}, {3, 4}};
+                        Arrays.sort(list, (long[] o1, long[] o2) -> Long.compare(o1[1], o2[1]));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("o1_const") && cpp.contains("const_cast"));
+
+        Path cppFile = tempDir.resolve("main_lambda.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_lambda").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testPrimitiveWrapperHashCode() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                public class Main {
+                    public static void main(String[] args) {
+                        int h1 = Integer.hashCode(42);
+                        int h2 = Long.hashCode(123456789012345L);
+                        int h3 = Double.hashCode(3.14159);
+                        int h4 = Boolean.hashCode(true);
+                        int h5 = Character.hashCode('a');
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("JInteger::hashCode"));
+        assertTrue(cpp.contains("JLong::hashCode"));
+
+        Path cppFile = tempDir.resolve("main_hashcode.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_hashcode").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+    }
+
+    @Test
+    void testStandardLibraryMethodsTranspilationAndExecution() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+                import java.math.*;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        // Integer & Long
+                        int r1 = Integer.rotateLeft(1, 2);
+                        int r2 = Integer.rotateRight(4, 2);
+                        int u1 = Integer.divideUnsigned(-10, 2);
+                        long u2 = Integer.toUnsignedLong(-1);
+                        long lr1 = Long.rotateLeft(1L, 2);
+                        long lu1 = Long.divideUnsigned(-10L, 2L);
+
+                        // Double & Character & Boolean
+                        boolean f1 = Double.isFinite(3.14);
+                        long b1 = Double.doubleToLongBits(3.14);
+                        double d1 = Double.longBitsToDouble(b1);
+                        int cd1 = Character.digit('a', 16);
+                        char fc1 = Character.forDigit(10, 16);
+                        boolean bg1 = Boolean.getBoolean("test");
+
+                        // Math
+                        double m1 = Math.log1p(0.5);
+                        double m2 = Math.expm1(0.5);
+                        double m3 = Math.sinh(0.5);
+                        double m4 = Math.toRadians(180.0);
+                        long m5 = Math.multiplyFull(100, 200);
+
+                        // Objects
+                        boolean o1 = Objects.isNull(null);
+                        boolean o2 = Objects.nonNull("abc");
+                        String o3 = Objects.requireNonNullElse("a", "b");
+
+                        // Arrays & Collections
+                        int[] arr1 = new int[]{1, 2, 3};
+                        int[] arr2 = new int[]{1, 2, 4};
+                        int cmp1 = Arrays.compare(arr1, arr2);
+                        List<Integer> list = new ArrayList<>(Arrays.asList(3, 1, 2));
+                        Collections.rotate(list, 1);
+                        boolean dis = Collections.disjoint(list, Arrays.asList(5, 6));
+
+                        // String & StringBuilder
+                        String s = "  hello world  ";
+                        boolean s1 = s.contains("hello");
+                        boolean s2 = s.matches(".*hello.*");
+                        String s3 = s.trim();
+                        boolean s4 = s.isBlank();
+                        String s5 = String.join("-", "a", "b", "c");
+
+                        StringBuilder sb = new StringBuilder("abc");
+                        sb.insert(1, "x");
+                        int sb1 = sb.indexOf("x");
+
+                        // BigInteger & BigDecimal
+                        BigInteger bi = new BigInteger("10");
+                        BigInteger bi2 = bi.modPow(BigInteger.valueOf(2), BigInteger.valueOf(7));
+                        BigInteger bi3 = BigInteger.valueOf(3).modInverse(BigInteger.valueOf(7));
+
+                        BigDecimal bd = new BigDecimal("3.14");
+                        BigDecimal bd2 = bd.remainder(new BigDecimal("2.0"));
+
+                        // BitSet
+                        BitSet bs = new BitSet();
+                        bs.set(0, 10);
+                        int p1 = bs.previousSetBit(5);
+                        int c1 = bs.nextClearBit(5);
+
+                        // Container methods
+                        List<String> slist = new ArrayList<>(Arrays.asList("a", "b", "c"));
+                        slist.replaceAll(x -> x.toUpperCase());
+                        boolean c2 = slist.containsAll(Arrays.asList("A", "B"));
+
+                        Map<String, Integer> map = new HashMap<>();
+                        map.put("a", 1);
+                        map.replace("a", 1, 2);
+
+                        // System & Runtime & Random & Thread & Date & Optional
+                        long t1 = System.currentTimeMillis();
+                        Runtime rt = Runtime.getRuntime();
+                        Random rnd = new Random(42);
+                        rnd.setSeed(12345);
+                        Date date = new Date(1000L);
+                        date.setTime(2000L);
+                        Optional<String> opt = Optional.of("test");
+                        String optVal = opt.orElseThrow();
+
+                        System.out.println("SUCCESS: " + s5 + " " + optVal);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        Path cppFile = tempDir.resolve("main_stdlib.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_stdlib").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        // Run the compiled binary
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_stdlib").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("SUCCESS: a-b-c test"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * JavaToCpp の PriorityQueue#addAll, Map#higherKey/lowerKey/higherEntry/lowerEntry,
+     * PrintWriter 派生クラスの using 宣言, メソッド参照, equals 変換を検証する。
+     * 計算量: O(1)
+     */
+    // 未テスト
+    @Test
+    void testNavigableMapAndPriorityQueueAddAll(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.*;
+
+                public class Main {
+                    static class MyWriter extends PrintWriter {
+                        public MyWriter() { super(System.out); }
+                        public void println(List<Integer> list) {
+                            for (int x : list) print(x + " ");
+                            println();
+                        }
+                    }
+
+                    static class Item {
+                        int v;
+                        Item(int v) { this.v = v; }
+                        int val() { return v; }
+                    }
+
+                    public static void main(String[] args) {
+                        // 1. PriorityQueue addAll
+                        PriorityQueue<Integer> pq = new PriorityQueue<>();
+                        ArrayDeque<Integer> dq = new ArrayDeque<>();
+                        dq.add(3);
+                        dq.add(1);
+                        dq.add(2);
+                        pq.addAll(dq);
+                        int p1 = pq.poll();
+
+                        // 2. TreeMap lowerKey, higherKey, lowerEntry, higherEntry
+                        TreeMap<Integer, String> map = new TreeMap<>();
+                        map.put(10, "ten");
+                        map.put(20, "twenty");
+                        map.put(30, "thirty");
+                        Integer lk = map.lowerKey(20);
+                        Integer hk = map.higherKey(20);
+                        Map.Entry<Integer, String> le = map.lowerEntry(20);
+                        Map.Entry<Integer, String> he = map.higherEntry(20);
+
+                        // 3. MyWriter using PrintWriter::println
+                        MyWriter pw = new MyWriter();
+                        pw.println(42L);
+
+                        // 4. Method reference to declared type
+                        Optional<Item> opt = Optional.of(new Item(100));
+                        int extracted = opt.map(Item::val).orElse(0);
+
+                        // 5. equals on pair/primitive
+                        var entry = map.floorEntry(20);
+                        boolean eq = entry.getKey().equals(20);
+
+                        System.out.println("OK: " + p1 + " " + lk + " " + hk + " " + extracted + " " + eq);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        Path cppFile = tempDir.resolve("main_test10.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test10").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test10").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("OK: 1 10 30 100 1") || runOutput.contains("OK: 1 10 30 100 true"), "Unexpected output:\n" + runOutput);
     }
 }

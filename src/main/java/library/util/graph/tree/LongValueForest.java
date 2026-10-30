@@ -374,7 +374,7 @@ public class LongValueForest extends  LongValueGraph {
 		return forest;
 	}
 	
-	public static LongValueTree readAsTree(int N) {
+	public static LongValueTree read(int N) {
 		LongValueTree tree = new LongValueTree(N);
 		FastScanner sc=FastScanner.getInstance();
 		for (int i = 0; i < N - 1; i++) {

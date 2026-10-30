@@ -314,7 +314,7 @@ public final class Grid4neighborAlgorithms {
      * {@link #bfs(int, int, boolean[][], int, int)} が返した距離配列から、
      * 始点 (si, sj) から終点 (ti, tj) への4近傍最短路を一つ復元する。
      * 戻り値を P とすると、P[0] = (si, sj)、P[P.length - 1] = (ti, tj) であり、
-     * 任意の 0 &lt; k &lt; P.length に対して dist[P[k - 1][0]][P[k - 1][1]] = dist[P[k][0]][P[k][1]] - 1 である。
+     * 任意の 0 < k < P.length に対して dist[P[k - 1][0]][P[k - 1][1]] = dist[P[k][0]][P[k][1]] - 1 である。
      * 終点が到達不能な場合、または dist が指定された始点からのBFS距離として整合しない場合は null を返す。
      *
      * @param dist {@code bfs(R, C, isObstacle, si, sj)} が返した R x C の距離配列
@@ -2262,5 +2262,235 @@ public final class Grid4neighborAlgorithms {
     public static boolean[][] generateRandomGrid(int N) {
         return generateRandomGrid(N, new int[][]{{0, 0}, {N - 1, N - 1}}, new java.util.Random());
     }
+    
+    
+    
 
+    /**
+     * 方向（0: 下, 1: 右, 2: 上, 3: 左）の差分から最小の90度方向転換回数を計算する。
+     *
+     * @param d1 変更前の方向（-1 の場合は初期方向指定なしとし 0 回）
+     * @param d2 変更後の方向
+     * @return 90度方向転換回数（0, 1, 2 のいずれか）
+     */
+    private static int minTurns(int d1, int d2) {
+        if (d1 < 0) return 0;
+        int diff = Math.abs(d1 - d2);
+        if (diff == 0) return 0;
+        if (diff == 1 || diff == 3) return 1;
+        return 2;
+    }
+
+    /**
+     * 始点 (si, sj) から各マスへの方向転換（1回あたりのコスト1）および1マス移動（コスト1）を考慮した最短距離をBFSにより計算する。
+     * 各マスにおいて、直前の移動方向（0: 下, 1: 右, 2: 上, 3: 左）ごとに最小コストを求める。
+     *
+     * 状態空間は (dir, r, c) であり、方向転換（90度ごとにコスト1）および移動（1マスごとにコスト1）のすべての遷移コストは 1 である。
+     * initialDir が -1 の場合は任意の初期方向を選択可能であり、初期状態のコストは 0 とする。
+     * 0 <= initialDir < 4 の場合は指定された初期方向のコストを 0 とする。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     *
+     * @param R 行数
+     * @param C 列数
+     * @param blockedRight R x (C - 1) 配列。null の場合は垂直壁なし
+     * @param blockedDown (R - 1) x C 配列。null の場合は水平壁なし
+     * @param isObstacle セル障害物情報（null の場合は障害物なし）
+     * @param si 始点の行インデックス
+     * @param sj 始点の列インデックス
+     * @param initialDir 初期進行方向（0: 下, 1: 右, 2: 上, 3: 左。-1 の場合は自由選択）
+     * @return dist[dir][r][c]（方向 dir を向いてマス (r, c) に到達するための最小コスト）
+     * @throws IllegalArgumentException blockedRight が R x (C - 1) 配列でない場合、または blockedDown が (R - 1) x C 配列でない場合（null は許容）
+     * @complexity O(R · C)
+     */
+    // 未テスト
+    public static int[][][] bfsWithTurnCost(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown, boolean[][] isObstacle,
+            int si, int sj, int initialDir) {
+        if (blockedRight != null) {
+            if (blockedRight.length != R) {
+                throw new IllegalArgumentException("blockedRight must have R rows");
+            }
+            for (int r = 0; r < R; r++) {
+                if (blockedRight[r] == null || blockedRight[r].length != C - 1) {
+                    throw new IllegalArgumentException("each row of blockedRight must have C - 1 columns");
+                }
+            }
+        }
+        if (blockedDown != null) {
+            if (blockedDown.length != R - 1) {
+                throw new IllegalArgumentException("blockedDown must have R - 1 rows");
+            }
+            for (int r = 0; r < R - 1; r++) {
+                if (blockedDown[r] == null || blockedDown[r].length != C) {
+                    throw new IllegalArgumentException("each row of blockedDown must have C columns");
+                }
+            }
+        }
+        int[][][] dist = new int[4][R][C];
+        int INF = Integer.MAX_VALUE / 3;
+        ArrayUtils.fill(dist, INF);
+        if (si < 0 || si >= R || sj < 0 || sj >= C) {
+            return dist;
+        }
+        if (isObstacle != null && (si >= isObstacle.length || isObstacle[si] == null || sj >= isObstacle[si].length || isObstacle[si][sj])) {
+            return dist;
+        }
+
+        ArrayDeque<int[]> dq = new ArrayDeque<>();
+        if (initialDir >= 0 && initialDir < 4) {
+            dist[initialDir][si][sj] = 0;
+            dq.add(new int[]{initialDir, si, sj});
+        } else {
+            for (int d = 0; d < 4; d++) {
+                dist[d][si][sj] = 0;
+                dq.add(new int[]{d, si, sj});
+            }
+        }
+
+        while (!dq.isEmpty()) {
+            int[] curr = dq.pollFirst();
+            int dir = curr[0];
+            int r = curr[1];
+            int c = curr[2];
+            int d = dist[dir][r][c];
+
+            // 1. その場で 90 度方向転換（コスト 1）
+            for (int turn = -1; turn <= 1; turn += 2) {
+                int ndir = (dir + turn + 4) % 4;
+                if (d + 1 < dist[ndir][r][c]) {
+                    dist[ndir][r][c] = d + 1;
+                    dq.addLast(new int[]{ndir, r, c});
+                }
+            }
+
+            // 2. 現在の向き dir で 1 マス前進（コスト 1）
+            if (canMove(r, c, dir, R, C, blockedRight, blockedDown, isObstacle)) {
+                int nr = r + dh[dir];
+                int nc = c + dw[dir];
+                if (d + 1 < dist[dir][nr][nc]) {
+                    dist[dir][nr][nc] = d + 1;
+                    dq.addLast(new int[]{dir, nr, nc});
+                }
+            }
+        }
+        return dist;
+    }
+
+    /**
+     * 始点 (si, sj) から終点 (ti, tj) への方向転換コストを考慮した最短パス（状態 [dir, r, c] の列）を取得する。
+     * 各要素は長さ 3 の配列 [dir, r, c] であり、状態グラフ上での遷移（移動および向き変更）が順に記録される。
+     * 壁（blockedRight, blockedDown）およびセル障害物（isObstacle）による通行不能、ならびに方向転換コストを考慮する。
+     * 到達不可能な場合は null を返す。
+     *
+     * @param R 行数
+     * @param C 列数
+     * @param blockedRight 垂直壁情報（null の場合は壁なし）
+     * @param blockedDown 水平壁情報（null の場合は壁なし）
+     * @param isObstacle セル障害物情報（null の場合は障害物なし）
+     * @param si 始点の行インデックス
+     * @param sj 始点の列インデックス
+     * @param ti 終点の行インデックス
+     * @param tj 終点の列インデックス
+     * @param initialDir 初期進行方向（0: 下, 1: 右, 2: 上, 3: 左。-1 の場合は自由選択）
+     * @param rnd 同点時の分岐選択用乱数生成器（null の場合は先頭を選択）
+     * @return パスを構成する各状態 [dir, r, c] の配列。到達不能時は null
+     * @complexity O(R · C)
+     */
+    // 未テスト
+    public static int[][] findPathWithTurnCost(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown, boolean[][] isObstacle,
+            int si, int sj, int ti, int tj, int initialDir, java.util.Random rnd) {
+        int[][][] dist = bfsWithTurnCost(R, C, blockedRight, blockedDown, isObstacle, si, sj, initialDir);
+        if (ti < 0 || ti >= R || tj < 0 || tj >= C) {
+            return null;
+        }
+        int INF = Integer.MAX_VALUE / 3;
+        int bestCost = INF;
+        java.util.ArrayList<Integer> bestDirs = new java.util.ArrayList<>();
+        for (int dir = 0; dir < 4; dir++) {
+            if (dist[dir][ti][tj] < bestCost) {
+                bestCost = dist[dir][ti][tj];
+                bestDirs.clear();
+                bestDirs.add(dir);
+            } else if (dist[dir][ti][tj] == bestCost && bestCost < INF) {
+                bestDirs.add(dir);
+            }
+        }
+        if (bestDirs.isEmpty() || bestCost >= INF) {
+            return null;
+        }
+
+        int targetDir;
+        if (bestDirs.size() > 1 && rnd != null) {
+            targetDir = bestDirs.get(rnd.nextInt(bestDirs.size()));
+        } else {
+            targetDir = bestDirs.get(0);
+        }
+
+        java.util.ArrayList<int[]> reversedPath = new java.util.ArrayList<>();
+        int currR = ti;
+        int currC = tj;
+        int currDir = targetDir;
+        reversedPath.add(new int[]{currDir, currR, currC});
+
+        while (true) {
+            if (currR == si && currC == sj) {
+                boolean isInitialState = false;
+                if (initialDir >= 0 && initialDir < 4) {
+                    if (currDir == initialDir && dist[currDir][currR][currC] == 0) {
+                        isInitialState = true;
+                    }
+                } else {
+                    if (dist[currDir][currR][currC] == 0) {
+                        isInitialState = true;
+                    }
+                }
+                if (isInitialState) {
+                    break;
+                }
+            }
+
+            java.util.ArrayList<int[]> candidates = new java.util.ArrayList<>();
+
+            // 1. 移動による手前の状態 (currDir, prevR, prevC) から前進してきたか？
+            int prevR = currR - dh[currDir];
+            int prevC = currC - dw[currDir];
+            if (prevR >= 0 && prevR < R && prevC >= 0 && prevC < C) {
+                if (canMove(prevR, prevC, currDir, R, C, blockedRight, blockedDown, isObstacle)) {
+                    if (dist[currDir][prevR][prevC] < INF && dist[currDir][prevR][prevC] + 1 == dist[currDir][currR][currC]) {
+                        candidates.add(new int[]{currDir, prevR, prevC});
+                    }
+                }
+            }
+
+            // 2. その場での 90 度方向転換前の状態 (prevDir, currR, currC) から転換してきたか？
+            for (int turn = -1; turn <= 1; turn += 2) {
+                int prevDir = (currDir + turn + 4) % 4;
+                if (dist[prevDir][currR][currC] < INF && dist[prevDir][currR][currC] + 1 == dist[currDir][currR][currC]) {
+                    candidates.add(new int[]{prevDir, currR, currC});
+                }
+            }
+
+            if (candidates.isEmpty()) {
+                break;
+            }
+
+            int[] chosen;
+            if (candidates.size() > 1 && rnd != null) {
+                chosen = candidates.get(rnd.nextInt(candidates.size()));
+            } else {
+                chosen = candidates.get(0);
+            }
+
+            currDir = chosen[0];
+            currR = chosen[1];
+            currC = chosen[2];
+            reversedPath.add(new int[]{currDir, currR, currC});
+        }
+
+        int len = reversedPath.size();
+        int[][] res = new int[len][3];
+        for (int i = 0; i < len; i++) {
+            res[i] = reversedPath.get(len - 1 - i);
+        }
+        return res;
+    }
 }

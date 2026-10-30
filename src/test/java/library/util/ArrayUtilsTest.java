@@ -309,6 +309,25 @@ public class ArrayUtilsTest {
     }
 
     @Test
+    public void testSuffixMin() {
+        long[] aLong = {3, 1, 4, 2};
+        long[] expectedLong = {1, 1, 2, 2};
+        assertArrayEquals(expectedLong, ArrayUtils.suffixMin(aLong));
+
+        int[] aInt = {3, 1, 4, 2};
+        int[] expectedInt = {1, 1, 2, 2};
+        assertArrayEquals(expectedInt, ArrayUtils.suffixMin(aInt));
+
+        double[] aDouble = {3.5, 1.5, 4.5, 2.5};
+        double[] expectedDouble = {1.5, 1.5, 2.5, 2.5};
+        assertArrayEquals(expectedDouble, ArrayUtils.suffixMin(aDouble), 1e-9);
+
+        float[] aFloat = {3.5f, 1.5f, 4.5f, 2.5f};
+        float[] expectedFloat = {1.5f, 1.5f, 2.5f, 2.5f};
+        assertArrayEquals(expectedFloat, ArrayUtils.suffixMin(aFloat), 1e-6f);
+    }
+
+    @Test
     public void testGenericNthElement() {
         Integer[] a = {5, 2, 9, 1, 7, 6, 3};
         ArrayUtils.nthElement(a, 3, Integer::compare);
@@ -340,5 +359,32 @@ public class ArrayUtilsTest {
         for (int i = 0; i < expected.length; i++) {
             assertArrayEquals(expected[i], actual[i]);
         }
+    }
+
+    @Test
+    public void testRotateLeftInplace() {
+        int[] emptyInt = new int[0];
+        ArrayUtils.rotateLeftInplace(emptyInt, 3);
+        assertEquals(0, emptyInt.length);
+
+        int[] aInt = {1, 2, 3, 4, 5};
+        ArrayUtils.rotateLeftInplace(aInt, 2);
+        assertArrayEquals(new int[]{3, 4, 5, 1, 2}, aInt);
+
+        ArrayUtils.rotateLeftInplace(aInt, -2);
+        assertArrayEquals(new int[]{1, 2, 3, 4, 5}, aInt);
+
+        ArrayUtils.rotateLeftInplace(aInt, 7);
+        assertArrayEquals(new int[]{3, 4, 5, 1, 2}, aInt);
+
+        ArrayUtils.rotateLeftInplace(aInt, 0);
+        assertArrayEquals(new int[]{3, 4, 5, 1, 2}, aInt);
+
+        long[] aLong = {10L, 20L, 30L, 40L};
+        ArrayUtils.rotateLeftInplace(aLong, 1);
+        assertArrayEquals(new long[]{20L, 30L, 40L, 10L}, aLong);
+
+        ArrayUtils.rotateLeftInplace(aLong, -1);
+        assertArrayEquals(new long[]{10L, 20L, 30L, 40L}, aLong);
     }
 }

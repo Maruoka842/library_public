@@ -119,9 +119,9 @@ public class StringUtils {
      * 辞書順最小の巡回シフトをBoothのアルゴリズムで求めて返す
      * @param a
      * @return
-     * https://atcoder.jp/contests/abc223/submissions/73247800
      */
 	public static char[] minRotate(char[] a) {
+		//https://atcoder.jp/contests/abc223/submissions/73247800
     	int p=0;
     	int q=1;
     	int k=0;

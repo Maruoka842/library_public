@@ -773,6 +773,25 @@ public class ArrayUtils {
 			--t;
 		}
 	}
+
+	/**
+	 * a[start, end) を反転（インプレース）する。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 */
+	// 未テスト
+	public static void reverse(long[] a, int start, int end) {
+		int s = start;
+		int t = end - 1;
+		while (s < t) {
+			swap(s, t, a);
+			++s;
+			--t;
+		}
+	}
 	
 	public static void reverse(boolean[] a) {
 		int s = 0;
@@ -1168,8 +1187,75 @@ public class ArrayUtils {
 		}
 		return b;
 	}
-	
-	
+
+	/**
+	 * 配列の各要素から末尾までの最小値（suffix min）を計算します。
+	 * b[i] = min(a[i], a[i+1], ..., a[a.length-1])
+	 * 計算量: O(N)
+	 *
+	 * @param a 入力配列
+	 * @return 累積後ろから最小値を格納した配列
+	 */
+	// 未テスト
+	public static long[] suffixMin(long[] a) {
+		long[] b = a.clone();
+		for (int i = b.length - 2; i >= 0; --i) {
+			b[i] = Math.min(b[i], b[i + 1]);
+		}
+		return b;
+	}
+
+	/**
+	 * 配列の各要素から末尾までの最小値（suffix min）を計算します。
+	 * b[i] = min(a[i], a[i+1], ..., a[a.length-1])
+	 * 計算量: O(N)
+	 *
+	 * @param a 入力配列
+	 * @return 累積後ろから最小値を格納した配列
+	 */
+	// 未テスト
+	public static int[] suffixMin(int[] a) {
+		int[] b = a.clone();
+		for (int i = b.length - 2; i >= 0; --i) {
+			b[i] = Math.min(b[i], b[i + 1]);
+		}
+		return b;
+	}
+
+	/**
+	 * 配列の各要素から末尾までの最小値（suffix min）を計算します。
+	 * b[i] = min(a[i], a[i+1], ..., a[a.length-1])
+	 * 計算量: O(N)
+	 *
+	 * @param a 入力配列
+	 * @return 累積後ろから最小値を格納した配列
+	 */
+	// 未テスト
+	public static double[] suffixMin(double[] a) {
+		double[] b = a.clone();
+		for (int i = b.length - 2; i >= 0; --i) {
+			b[i] = Math.min(b[i], b[i + 1]);
+		}
+		return b;
+	}
+
+	/**
+	 * 配列の各要素から末尾までの最小値（suffix min）を計算します。
+	 * b[i] = min(a[i], a[i+1], ..., a[a.length-1])
+	 * 計算量: O(N)
+	 *
+	 * @param a 入力配列
+	 * @return 累積後ろから最小値を格納した配列
+	 */
+	// 未テスト
+	public static float[] suffixMin(float[] a) {
+		float[] b = a.clone();
+		for (int i = b.length - 2; i >= 0; --i) {
+			b[i] = Math.min(b[i], b[i + 1]);
+		}
+		return b;
+	}
+
 	/**
 	 * @param a
 	 * @return
@@ -2953,6 +3039,38 @@ public class ArrayUtils {
 	 * @param a
 	 * @return
 	 */
+	/**
+	 * 配列 a を左に shift 個インプレースで回転する。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @param shift 回転数 (負の値も指定可能)
+	 */
+	// 未テスト
+	public static void rotateLeftInplace(int[] a, int shift) {
+		if (a.length == 0 || shift % a.length == 0) return;
+		int k = (shift % a.length + a.length) % a.length;
+		reverse(a, 0, k);
+		reverse(a, k, a.length);
+		reverse(a, 0, a.length);
+	}
+
+	/**
+	 * 配列 a を左に shift 個インプレースで回転する。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @param shift 回転数 (負の値も指定可能)
+	 */
+	// 未テスト
+	public static void rotateLeftInplace(long[] a, int shift) {
+		if (a.length == 0 || shift % a.length == 0) return;
+		int k = (shift % a.length + a.length) % a.length;
+		reverse(a, 0, k);
+		reverse(a, k, a.length);
+		reverse(a, 0, a.length);
+	}
+
 	public static int[] rotateLeft(int[] a, int shift) {
 		shift = shift % a.length;
 		if (shift < a.length)

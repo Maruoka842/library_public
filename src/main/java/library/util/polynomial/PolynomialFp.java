@@ -778,6 +778,24 @@ public class PolynomialFp {
 		return PolynomialFpDynamic.MOD998244353.productOfOnePlusAXB(factors, L);
 	}
 
+	// 未テスト
+	/**
+	 * F(x) = Σ_(i=0)^(n-1) a_i x^b_i (d + e x)^c_i mod 998244353 を展開した係数列を返す。
+	 *
+	 * <p>
+	 * 計算量: O(n log n + Σ_i c_i + QL + min(Q, n)L log L)。NTT 非対応時は O(n log n + Σ_i c_i + L)。
+	 *
+	 * @param a 各項の係数 a_i の配列
+	 * @param b 各項の次数 b_i (b_i >= 0) の配列
+	 * @param c 各項の指数 c_i (c_i >= 0) の配列
+	 * @param d 二項式の定数項
+	 * @param e 二項式の一次係数
+	 * @return 展開された多項式 F(x) の係数配列
+	 */
+	public static long[] expandPolynomialSum(long[] a, int[] b, int[] c, long d, long e) {
+		return PolynomialFpDynamic.MOD998244353.sumPowerProductsBySqrtDecomposition(a, b, c, d, e);
+	}
+
 	/**
 	 * AtCoderでa.length=1e6で1.2sec
 	 * A simple and fast algorithm for computing exponentials of power series. Alin Bostan
