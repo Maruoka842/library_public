@@ -34,4 +34,14 @@ template<class F> template<class G> auto JComparator<F>::thenComparing(G other) 
 template<class A, class B> template<class G> auto JChainedComparator<A, B>::thenComparing(G other) const {
     return JChainedComparator<JChainedComparator<A, B>, JComparator<G>>{*this, JComparator<G>{other}};
 }
-template<class F> auto jcomparing(F key) { return JComparator<F>{key}; }
+template<class T> struct jis_jcomparator : false_type {};
+template<class F> struct jis_jcomparator<JComparator<F>> : true_type {};
+template<class A, class B> struct jis_jcomparator<JChainedComparator<A, B>> : true_type {};
+
+template<class F> auto jcomparing(F key) {
+    if constexpr (jis_jcomparator<decay_t<F>>::value) {
+        return key;
+    } else {
+        return JComparator<F>{key};
+    }
+}

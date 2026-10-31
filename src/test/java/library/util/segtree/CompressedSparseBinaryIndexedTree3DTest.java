@@ -14,11 +14,11 @@ public class CompressedSparseBinaryIndexedTree3DTest {
         CompressedSparseBinaryIndexedTree3D bit = new CompressedSparseBinaryIndexedTree3D();
 
         // Register points
-        bit.register(10, 10, 10);
-        bit.register(20, 20, 20);
-        bit.register(10, 20, 30);
-        bit.register(30, 10, 20);
-        bit.register(30, 30, 30);
+        bit.registerKey(10, 10, 10);
+        bit.registerKey(20, 20, 20);
+        bit.registerKey(10, 20, 30);
+        bit.registerKey(30, 10, 20);
+        bit.registerKey(30, 30, 30);
 
         // Build
         bit.build();
@@ -84,14 +84,14 @@ public class CompressedSparseBinaryIndexedTree3DTest {
         };
 
         CompressedSparseBinaryIndexedTree3D bit = new CompressedSparseBinaryIndexedTree3D(xorStrategy);
-        bit.register(1, 1, 1);
-        bit.register(1, 1, 2);
-        bit.register(1, 2, 1);
-        bit.register(1, 2, 2);
-        bit.register(2, 1, 1);
-        bit.register(2, 1, 2);
-        bit.register(2, 2, 1);
-        bit.register(2, 2, 2);
+        bit.registerKey(1, 1, 1);
+        bit.registerKey(1, 1, 2);
+        bit.registerKey(1, 2, 1);
+        bit.registerKey(1, 2, 2);
+        bit.registerKey(2, 1, 1);
+        bit.registerKey(2, 1, 2);
+        bit.registerKey(2, 2, 1);
+        bit.registerKey(2, 2, 2);
 
         bit.build();
 
@@ -132,8 +132,8 @@ public class CompressedSparseBinaryIndexedTree3DTest {
         };
 
         CompressedSparseBinaryIndexedTree3D bit = new CompressedSparseBinaryIndexedTree3D(addMonoid);
-        bit.register(1, 1, 1);
-        bit.register(2, 2, 2);
+        bit.registerKey(1, 1, 1);
+        bit.registerKey(2, 2, 2);
 
         bit.build();
 
@@ -177,7 +177,7 @@ public class CompressedSparseBinaryIndexedTree3DTest {
     @Test
     public void testUnregisteredThrows() {
         CompressedSparseBinaryIndexedTree3D bit = new CompressedSparseBinaryIndexedTree3D();
-        bit.register(5, 5, 5);
+        bit.registerKey(5, 5, 5);
         bit.build();
 
         // Valid
@@ -197,7 +197,7 @@ public class CompressedSparseBinaryIndexedTree3DTest {
     @Test
     public void testNotBuiltThrows() {
         CompressedSparseBinaryIndexedTree3D bit = new CompressedSparseBinaryIndexedTree3D();
-        bit.register(1, 1, 1);
+        bit.registerKey(1, 1, 1);
         assertThrows(AssertionError.class, () -> bit.add(1, 1, 1, 10));
         assertThrows(AssertionError.class, () -> bit.prefixSum(2, 2, 2));
     }

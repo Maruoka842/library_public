@@ -20,7 +20,7 @@ public class CountLabeledBiconnectedTest {
 		// n=7: 1014888
 		// n=8: 166537616
 		long[] expected = {0, 0, 1, 1, 10, 238, 11368, 1014888, 166537616};
-		long[] actual = CountGraph.countLabeledBiconnected(8, mod);
+		long[] actual = GraphCount.countLabeledBiconnected(8, mod);
 		assertArrayEquals(expected, actual);
 	}
 
@@ -29,7 +29,7 @@ public class CountLabeledBiconnectedTest {
 		long mod = 998244353;
 		long[] expected = {0, 0, 1, 1, 10, 238, 11368, 1014888, 166537616};
 		for (int n = 1; n <= 8; n++) {
-			assertEquals(expected[n], CountGraph.countLabeledBiconnectedSingle(n, mod), "Failed at n=" + n);
+			assertEquals(expected[n], GraphCount.countLabeledBiconnectedSingle(n, mod), "Failed at n=" + n);
 		}
 	}
 }

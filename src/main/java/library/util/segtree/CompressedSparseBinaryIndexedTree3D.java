@@ -135,23 +135,6 @@ public class CompressedSparseBinaryIndexedTree3D {
 	}
 
 	/**
-	 * 更新を作用させる座標 (x, y, z) を事前に登録する。 (registerKey の別名)
-	 *
-	 * <p>契約:</p>
-	 * <ul>
-	 *   <li>計算量: O(1)</li>
-	 *   <li>破壊的変更: あり</li>
-	 * </ul>
-	 * @param x X座標
-	 * @param y Y座標
-	 * @param z Z座標
-	 */
-	// 未テスト
-	public void register(long x, long y, long z) {
-		registerKey(x, y, z);
-	}
-
-	/**
 	 * 登録された座標情報に基づいて 3次元 圧縮 BIT を構築する。
 	 *
 	 * <p>契約:</p>

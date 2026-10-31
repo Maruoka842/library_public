@@ -2,6 +2,7 @@ package library.util.graph;
 
 import java.util.Arrays;
 
+import library.util.ArrayUtils;
 import library.util.Fp;
 import library.util.Itertools;
 import library.util.MathUtils;
@@ -11,7 +12,38 @@ import library.util.polynomial.PolynomialFpDynamic;
 /**
  * 無向完全グラフをハミルトンパス、ハミルトンサイクル、マッチングなどに分解するユーティリティクラス。
  */
-public class CountGraph {
+public class GraphCount {
+	
+	/**
+	 * 連結成分を縮約したグラフが木になるように辺を追加する方法の数を、
+	 * 指定された法で返す。
+	 *
+	 * 成分数を k、各成分のサイズを c_i、その総和を n とすると、
+	 * k >= 2 の場合は n^(k-2) * ∏ c_i 
+	 *
+	 * @param sizes 各連結成分の正のサイズ（正であることは検証しない）
+	 * @param mod 正の法
+	 * @return 接続方法の数を mod で割った余り
+	 * @throws IllegalArgumentException sizes が空、または mod が正でない場合
+	 * @throws NullPointerException sizes が null の場合
+	 */
+	public static int treeConnections(int[] sizes, int mod) {
+	    if (sizes.length == 0 || mod <= 0) {
+	        throw new IllegalArgumentException();
+	    }
+	    if (sizes.length == 1) {
+	        return 1 % mod;
+	    }
+	    long sum = ArrayUtils.sum(sizes);
+	    long result = 1;
+
+	    for (int size : sizes) {
+	        result = result * size % mod;
+	    }
+    	result = result * MathUtils.modPow(sum, sizes.length-2, mod);
+	    return (int) result;
+	}
+	
 	/**
 	 * ret[i] = n頂点でi個の有向サイクルからなるものの数。n=0のときはret[0]=1。 x(x+1)..(x+n-1)
 	 * 

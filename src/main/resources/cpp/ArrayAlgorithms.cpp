@@ -2,6 +2,16 @@ template<class T> void jsort(vector<T>& a) { sort(a.begin(), a.end()); }
 template<class T, class C> void jsort(vector<T>& a, C compare) {
     sort(a.begin(), a.end(), [&](const T& x, const T& y) { return compare(x, y) < 0; });
 }
+// 未テスト
+// 計算量: O(N log N)
+template<class T> void jsort(vector<T>& a, int fromIndex, int toIndex) {
+    sort(a.begin() + fromIndex, a.begin() + toIndex);
+}
+// 未テスト
+// 計算量: O(N log N)
+template<class T, class C> void jsort(vector<T>& a, int fromIndex, int toIndex, C compare) {
+    sort(a.begin() + fromIndex, a.begin() + toIndex, [&](const T& x, const T& y) { return compare(x, y) < 0; });
+}
 template<class T, class U> void jfill(vector<T>& a, const U& x) { fill(a.begin(), a.end(), static_cast<T>(x)); }
 template<class T> vector<T> jcopyOf(const vector<T>& a, int n) {
     vector<T> result(n);

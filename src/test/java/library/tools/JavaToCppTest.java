@@ -1830,4 +1830,67 @@ public class JavaToCppTest {
         assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
         assertTrue(runOutput.contains("OK: 1 10 30 100 1") || runOutput.contains("OK: 1 10 30 100 true"), "Unexpected output:\n" + runOutput);
     }
+
+    @Test
+    void testBatchFeatures(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                public class Main {
+                    static class Point {
+                        int x, y;
+                        Point(int x, int y) { this.x = x; this.y = y; }
+                    }
+
+                    static <T> int getHash(T obj) {
+                        return obj.hashCode();
+                    }
+
+                    public static void main(String[] args) {
+                        int[] arr = new int[]{3, 1, 4, 1, 5};
+                        Arrays.sort(arr, 1, 4);
+
+                        List<Point> points = new ArrayList<>();
+                        points.add(new Point(2, 3));
+                        points.add(new Point(1, 5));
+                        points.add(new Point(1, 2));
+
+                        Comparator<Point> comp = Comparator.comparing((Point p) -> p.x)
+                                .thenComparing((Point p) -> p.y);
+                        points.sort(comp);
+
+                        int h = getHash("hello");
+                        boolean cleaned = false;
+                        try {
+                            cleaned = true;
+                        } finally {
+                            System.out.println("FINALLY");
+                        }
+
+                        System.out.println("OK: " + arr[1] + " " + arr[2] + " " + points.get(0).y + " " + (h != 0));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        Path cppFile = tempDir.resolve("main_test11.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test11").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test11").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("FINALLY"), "Expected FINALLY output:\n" + runOutput);
+        assertTrue(runOutput.contains("OK: 1 1 2 1") || runOutput.contains("OK: 1 1 2 true"), "Unexpected output:\n" + runOutput);
+    }
 }

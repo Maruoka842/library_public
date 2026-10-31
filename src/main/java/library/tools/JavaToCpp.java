@@ -1046,6 +1046,34 @@ public final class JavaToCpp {
         /** try 文 t を出力する。計算量: O(|t|)。 */
         // 未テスト
         private void emitTry(CtTry t) {
+            if (t.getFinalizer() != null && !t.getFinalizer().getStatements().isEmpty()) {
+                writeIndent();
+                out.append("{\n");
+                indent++;
+                line("auto __finally = [&]() {");
+                indent++;
+                for (CtStatement s : t.getFinalizer().getStatements()) emitStatement(s);
+                indent--;
+                line("};");
+                line("struct __RAII { decltype(__finally)& f; ~__RAII() { f(); } } __raii{__finally};");
+                if (!t.getCatchers().isEmpty()) {
+                    writeIndent();
+                    out.append("try ");
+                    emitBlock(t.getBody(), false);
+                    for (CtCatch catcher : t.getCatchers()) {
+                        out.append(" catch (const exception& ").append(id(catcher.getParameter().getSimpleName())).append(") ");
+                        emitBlock(catcher.getBody(), false);
+                    }
+                    out.append('\n');
+                } else {
+                    emitBlock(t.getBody(), true);
+                    out.append('\n');
+                }
+                indent--;
+                writeIndent();
+                out.append("}\n");
+                return;
+            }
             writeIndent();
             out.append("try ");
             emitBlock(t.getBody(), false);
@@ -1054,7 +1082,6 @@ public final class JavaToCpp {
                 emitBlock(catcher.getBody(), false);
             }
             out.append('\n');
-            if (t.getFinalizer() != null) for (CtStatement s : t.getFinalizer().getStatements()) emitStatement(s);
         }
 
         /** for の節にある文 s を返す。計算量: O(|s|)。 */
@@ -1496,6 +1523,9 @@ public final class JavaToCpp {
             if ((qualified.equals("java.lang.String") || simpleTargetName(i.getTarget()).equals("String")) && name.equals("join")) {
                 return "jjoin" + arguments(i.getArguments());
             }
+            if (name.startsWith("thenComparing") && i.getTarget() != null && !i.getArguments().isEmpty()) {
+                return "jcomparing(" + expr(i.getTarget()) + ")." + name + "(" + expr(i.getArguments().get(0)) + ")";
+            }
             if (name.equals("compare") && i.getTarget() != null && i.getArguments().size() == 2) {
                 if (i.getTarget() instanceof CtTypeAccess<?>) {
                     return expr(i.getTarget()) + "::" + id(name) + arguments(i.getArguments());
@@ -1546,6 +1576,9 @@ public final class JavaToCpp {
             }
             if (qualified.equals("java.util.Objects") && name.equals("hashCode")) {
                 return "static_cast<int>(jhash(" + expr(i.getArguments().get(0)) + "))";
+            }
+            if (name.equals("hashCode") && i.getArguments().isEmpty() && i.getTarget() != null) {
+                return "static_cast<int>(jhash(" + expr(i.getTarget()) + "))";
             }
             if (qualified.equals("java.util.Objects") && name.equals("equals")) {
                 return "(" + expr(i.getArguments().get(0)) + " == " + expr(i.getArguments().get(1)) + ")";

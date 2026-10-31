@@ -18,16 +18,6 @@ public class BinaryIndexedTree2D {
 
 	/**
 	 * HxW の 2次元 Binary Indexed Tree を構築する。
-	 * 加法群 (long, +, -, 0) を使用する。
-	 * @param H 高さ
-	 * @param W 幅
-	 */
-	public BinaryIndexedTree2D(int H, int W) {
-		this(H, W, (x, y) -> x + y, x -> -x, 0L);
-	}
-
-	/**
-	 * HxW の 2次元 Binary Indexed Tree を構築する。
 	 * @param H 高さ
 	 * @param W 幅
 	 * @param op 二項演算（アーベル群の演算である必要がある）
