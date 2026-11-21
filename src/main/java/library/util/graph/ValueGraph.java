@@ -1,7 +1,10 @@
 package library.util.graph;
 
+import java.util.ArrayDeque;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
+import java.util.Queue;
 
 /**
  * 辺の重みを型 T で持つ無向グラフを表すクラスです。
@@ -84,5 +87,67 @@ public class ValueGraph<T> {
 			}
 		}
 		return edges;
+	}
+
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな ValueGraph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 * 辺の重み（オブジェクト参照）、多重辺、自己ループを含むすべての辺情報が各部分グラフに保持される。
+	 *
+	 * 計算量: O(N + M)
+	 *
+	 * @return 各連結成分を表す ValueGraph の配列
+	 */
+	// 未テスト
+	@SuppressWarnings("unchecked")
+	public ValueGraph<T>[] connectedComponents() {
+		int[] color = new int[N];
+		Arrays.fill(color, -1);
+		Queue<Integer> que = new ArrayDeque<>();
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			if (color[i] != -1) continue;
+			que.add(i);
+			color[i] = k;
+			while (!que.isEmpty()) {
+				int v = que.poll();
+				for (ValueEdge<T> e : adj[v]) {
+					int u = e.dst();
+					if (color[u] != -1) continue;
+					color[u] = k;
+					que.add(u);
+				}
+			}
+			k++;
+		}
+		ArrayList<Integer>[] comps = new ArrayList[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[color[i]].add(i);
+		}
+		ValueGraph<T>[] res = new ValueGraph[k];
+		int[] mapping = new int[N];
+		for (int c = 0; c < k; c++) {
+			ArrayList<Integer> comp = comps[c];
+			int sz = comp.size();
+			for (int i = 0; i < sz; i++) {
+				mapping[comp.get(i)] = i;
+			}
+			ValueGraph<T> g = new ValueGraph<>(sz);
+			for (int u : comp) {
+				int newU = mapping[u];
+				for (ValueEdge<T> e : adj[u]) {
+					int v = e.dst();
+					if (u < v) {
+						g.addEdge(newU, mapping[v], e.weight());
+					} else if (u == v) {
+						g.addEdge(newU, newU, e.weight());
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
 	}
 }

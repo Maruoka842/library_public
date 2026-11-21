@@ -12,6 +12,60 @@ import library.util.segtree.SegTreeFactory;
 public class StringUtils {
 	
 	/**
+	 * f[c][i] = S[i..] で最初に c が現れる位置。なければ s.length。
+	 * サイズは alphabetSize x n。
+	 */
+	public static int[][] nextTable(int[] s, int alphabetSize) {
+	    int n = s.length;
+	    int[][] f = new int[alphabetSize][n];
+	    for (int c = 0; c < alphabetSize; c++) {
+	        int[] fc = f[c];
+	        int last = n;
+	        for (int i = n - 1; i >= 0; i--) {
+	            if (s[i] == c) last = i;
+	            fc[i] = last;
+	        }
+	    }
+	    return f;
+	}
+	
+	
+	/**
+	 * 各値 i について、i = a[k] となるインデックス k を昇順に並べた配列を返す。
+	 * 未テスト。
+	 *
+	 * 戻り値 res は res[i] = {k | a[k] = i} を表す。
+	 * 0 <= a[k] < alphabetSize を仮定する。
+	 * 範囲外の値が存在する場合、IllegalArgumentException を投げる。
+	 *
+	 * @param a
+	 * @param alphabetSize
+	 *         値域のサイズ
+	 * @return res[i] = {k | a[k] = i}
+	 * @complexity O(a.length + alphabetSize)
+	 */
+	public static int[][] positionsByValue(int[] a, int alphabetSize) {
+	    int n = a.length;
+	    int[] counts = new int[alphabetSize];
+	    for (int val : a) {
+	        if (val < 0 || val >= alphabetSize) {
+	            throw new IllegalArgumentException();
+	        }
+	        counts[val]++;
+	    }
+	    int[][] res = new int[alphabetSize][];
+	    for (int i = 0; i < alphabetSize; i++) {
+	        res[i] = new int[counts[i]];
+	    }
+	    int[] ptr = new int[alphabetSize];
+	    for (int k = 0; k < n; k++) {
+	        int val = a[k];
+	        res[val][ptr[val]++] = k;
+	    }
+	    return res;
+	}
+	
+	/**
 	 * 最長共通部分文字列（LCS）の情報を保持する。
 	 * @param p1 sにおける開始位置
 	 * @param p2 tにおける開始位置

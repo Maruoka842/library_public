@@ -281,12 +281,10 @@ public abstract class ImplicitDigraph<V> {
 
 	/**
 	 * 指定された頂点から受理条件を満たす頂点への最短パスを一つ返す。
-	 *
-	 * @param src 始点
-	 * @param acceptingCondition 受理条件
-	 * @return 頂点列のリスト。到達不能な場合は null。
-	 *
-	 * <p>計算量: 到達可能な頂点数を V, 辺数を M として O(V + M)。</p>
+	 * 到達不能な場合は null。
+	 * @param src
+	 * @param acceptingCondition
+	 * @return 
 	 */
 	public List<V> path(V src, Predicate<? super V> acceptingCondition) {
 		OpenHashMap<V, V> prev = new OpenHashMap<>(strategy);
@@ -603,5 +601,34 @@ public abstract class ImplicitDigraph<V> {
 		List<V> ret = new ArrayList<>();
 		for (int i : cycle) ret.add(res.nodes.get(i));
 		return ret;
+	}
+	
+	
+	/**
+	 * 指定された頂点から受理条件を満たす頂点への最短距離を返す。
+	 * 到達可能な頂点が存在しない場合は -1
+	 * @param src
+	 * @param acceptingCondition 頂点を受け取り、受理するか否かを返す
+	 * @return
+	 */
+	public int dist(V src, Predicate<? super V> acceptingCondition) {
+	    OpenHashMap<V, Integer> dist = new OpenHashMap<>(strategy);
+	    Queue<V> que = new ArrayDeque<>();
+	    dist.put(src, 0);
+	    que.add(src);
+
+	    while (!que.isEmpty()) {
+	        V v = que.poll();
+	        int d = dist.get(v);
+	        if (acceptingCondition.test(v)) return d;
+
+	        for (V u : nextStates(v)) {
+	            if (!dist.containsKey(u)) {
+	                dist.put(u, d + 1);
+	                que.add(u);
+	            }
+	        }
+	    }
+	    return -1;
 	}
 }

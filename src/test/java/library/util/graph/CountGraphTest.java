@@ -58,29 +58,29 @@ public class CountGraphTest {
 
         // Verify edge cases and small values
         // k = 0
-        long[] res0 = GraphCount.countKnPartitionFixedK(0, 5, mod);
+        long[] res0 = GraphCount.countKnUnorderedPartitionFixedK(0, 5, mod);
         assertArrayEquals(new long[] {1, 0, 0, 0, 0, 0}, res0);
 
         // k = 1
         // S(0, 1) = 0, S(n, 1) = 1 for n >= 1
-        long[] res1 = GraphCount.countKnPartitionFixedK(1, 5, mod);
+        long[] res1 = GraphCount.countKnUnorderedPartitionFixedK(1, 5, mod);
         assertArrayEquals(new long[] {0, 1, 1, 1, 1, 1}, res1);
 
         // k = 2
         // S(0, 2) = 0, S(1, 2) = 0, S(2, 2) = 1, S(3, 2) = 3, S(4, 2) = 7, S(5, 2) = 15
-        long[] res2 = GraphCount.countKnPartitionFixedK(2, 5, mod);
+        long[] res2 = GraphCount.countKnUnorderedPartitionFixedK(2, 5, mod);
         assertArrayEquals(new long[] {0, 0, 1, 3, 7, 15}, res2);
 
         // k > maxN
-        long[] resBigK = GraphCount.countKnPartitionFixedK(6, 5, mod);
+        long[] resBigK = GraphCount.countKnUnorderedPartitionFixedK(6, 5, mod);
         assertArrayEquals(new long[] {0, 0, 0, 0, 0, 0}, resBigK);
 
         // k < 0
-        long[] resNegK = GraphCount.countKnPartitionFixedK(-1, 5, mod);
+        long[] resNegK = GraphCount.countKnUnorderedPartitionFixedK(-1, 5, mod);
         assertArrayEquals(new long[] {0, 0, 0, 0, 0, 0}, resNegK);
 
         // maxN < 0
-        long[] resNegN = GraphCount.countKnPartitionFixedK(2, -1, mod);
+        long[] resNegN = GraphCount.countKnUnorderedPartitionFixedK(2, -1, mod);
         assertArrayEquals(new long[0], resNegN);
 
         // Stress check / consistency check with countKnPartition
@@ -89,14 +89,14 @@ public class CountGraphTest {
         int testMax = 50;
         long[][] S = new long[testMax + 1][testMax + 1];
         for (int n = 0; n <= testMax; n++) {
-            long[] row = GraphCount.countKnPartition(n, testMax, mod);
+            long[] row = GraphCount.countKnUnorderedPartition(n, testMax, mod);
             for (int k = 0; k <= testMax; k++) {
                 S[n][k] = row[k];
             }
         }
 
         for (int k = 0; k <= testMax; k++) {
-            long[] resFixedK = GraphCount.countKnPartitionFixedK(k, testMax, mod);
+            long[] resFixedK = GraphCount.countKnUnorderedPartitionFixedK(k, testMax, mod);
             assertEquals(testMax + 1, resFixedK.length);
             for (int n = 0; n <= testMax; n++) {
                 assertEquals(S[n][k], resFixedK[n], "Mismatch at n=" + n + ", k=" + k);

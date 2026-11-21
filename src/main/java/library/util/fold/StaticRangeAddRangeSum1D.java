@@ -48,5 +48,12 @@ public class StaticRangeAddRangeSum1D {
 		return getRangeSum(i, i+1);
 	}
 	
+	public void dump() {
+		long[]a=new long[A.length];
+		for (int i = 0; i < a.length; i++) {
+			System.out.print(get(i)+(i==a.length-1?"\n":" "));
+		}
+	}
+	
 	void tr(Object...objects) {System.out.println(Arrays.deepToString(objects));}
 }

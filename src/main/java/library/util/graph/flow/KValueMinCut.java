@@ -1,4 +1,4 @@
-package library.util.graph;
+package library.util.graph.flow;
 
 public class KValueMinCut {
 	//https://atcoder.jp/contests/past23-open/submissions/74927637

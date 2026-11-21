@@ -3,8 +3,8 @@ package library.util.poset;
 import java.util.Arrays;
 
 import library.util.graph.DAG;
-import library.util.graph.MaxFlow;
-import library.util.graph.MinimumCostFlow;
+import library.util.graph.flow.MaxFlow;
+import library.util.graph.flow.MinimumCostFlow;
 
 public class Poset {
 	/**

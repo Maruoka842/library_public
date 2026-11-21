@@ -14,6 +14,8 @@ import java.util.Set;
 import spoon.Launcher;
 import spoon.reflect.CtModel;
 import spoon.reflect.code.CtArrayAccess;
+import spoon.reflect.code.CtArrayRead;
+import spoon.reflect.code.CtArrayWrite;
 import spoon.reflect.code.CtAssert;
 import spoon.reflect.code.CtAssignment;
 import spoon.reflect.code.CtBinaryOperator;
@@ -34,6 +36,10 @@ import spoon.reflect.code.CtForEach;
 import spoon.reflect.code.CtIf;
 import spoon.reflect.code.CtInvocation;
 import spoon.reflect.code.CtLambda;
+import spoon.reflect.code.CtLoop;
+import spoon.reflect.declaration.CtAnonymousExecutable;
+import spoon.reflect.declaration.CtRecord;
+import spoon.reflect.declaration.CtRecordComponent;
 import spoon.reflect.code.CtLiteral;
 import spoon.reflect.code.CtLocalVariable;
 import spoon.reflect.code.CtNewArray;
@@ -54,9 +60,11 @@ import spoon.reflect.code.CtWhile;
 import spoon.reflect.declaration.CtClass;
 import spoon.reflect.declaration.CtConstructor;
 import spoon.reflect.declaration.CtElement;
+import spoon.reflect.declaration.CtExecutable;
 import spoon.reflect.declaration.CtField;
 import spoon.reflect.declaration.CtMethod;
 import spoon.reflect.declaration.CtParameter;
+import spoon.reflect.declaration.CtVariable;
 import spoon.reflect.declaration.CtType;
 import spoon.reflect.declaration.CtTypeParameter;
 import spoon.reflect.declaration.ModifierKind;
@@ -74,7 +82,8 @@ public final class JavaToCpp {
     /** C++ の予約語と衝突する Java 識別子。 */
     private static final Set<String> CPP_KEYWORDS = Set.of("delete", "template", "typename", "operator",
             "namespace", "concept", "requires", "and", "or", "xor", "compl", "not", "new", "union",
-            "bitand", "bitor", "and_eq", "or_eq", "xor_eq", "not_eq");
+            "bitand", "bitor", "and_eq", "or_eq", "xor_eq", "not_eq", "register",
+            "bool", "inline", "virtual", "override", "final", "constexpr");
 
     /** インスタンス化しない。計算量: O(1)。 */
     // 未テスト
@@ -149,9 +158,11 @@ public final class JavaToCpp {
         /** C++入力ランタイムへ置換するソース内型名。 */
         /** C++出力ランタイムへ置換するソース内型名。 */
         /** 出力バッファ。 */
-        private final StringBuilder out = new StringBuilder();
+        private StringBuilder out = new StringBuilder();
         /** 全型定義後に本体を出力するメソッド。 */
         private final List<CtMethod<?>> deferredMethods = new java.util.ArrayList<>();
+        /** 全型定義後に本体を出力するコンストラクタ。 */
+        private final List<CtConstructor<?>> deferredConstructors = new java.util.ArrayList<>();
         /** 現在本体を出力している型。 */
         private CtType<?> currentType;
         /** 現在出力中の無名関数メソッド。 */
@@ -162,6 +173,33 @@ public final class JavaToCpp {
         private List<CtParameter<?>> currentInitializerListParameters;
         /** 現在の字下げ段数。 */
         private int indent;
+        /** foreach用一時変数カウンタ。 */
+        private int iterCounter;
+        /** ループラベルの一意ID対応。 */
+        private final java.util.Map<CtStatement, Integer> loopLabelIds = new java.util.IdentityHashMap<>();
+        private int loopLabelCounter;
+        /**
+         * パターンマッチング変数のリネームマップ。同名・異型のバインディング変数を区別するために使用する。
+         * キー: CtLocalVariable の identity、値: C++ での変数名。
+         */
+        private final java.util.Map<CtLocalVariable<?>, String> patternVarRenames = new java.util.IdentityHashMap<>();
+        /** patternVarRenames の CtVariableReference キー版（CtLocalVariable から getReference() で取得）。 */
+        private final java.util.Map<spoon.reflect.reference.CtVariableReference<?>, String> patternVarRefRenames = new java.util.IdentityHashMap<>();
+        /**
+         * 現在の if ブランチでアクティブなパターン変数名マップ（変数の単純名 → C++ 変数名）。
+         * 同名・異型のパターン変数を if ブランチごとに正しく解決するために使用する。
+         */
+        private final java.util.Deque<java.util.Map<String, String>> patternVarScopeStack = new java.util.ArrayDeque<>();
+
+        private int getLoopLabelId(CtStatement stmt) {
+            if (stmt == null) return 0;
+            return loopLabelIds.computeIfAbsent(stmt, k -> ++loopLabelCounter);
+        }
+
+        private String loopLabelSuffix(CtStatement stmt) {
+            if (stmt == null) return "";
+            return "_" + getLoopLabelId(stmt);
+        }
 
         /**
          * モデル M の変換状態を作る。計算量: O(T)。T は宣言型数。
@@ -232,7 +270,6 @@ public final class JavaToCpp {
         }
 
         String emit() {
-            out.append(CppRuntimePrelude.prelude());
             List<CtType<?>> types = model.getAllTypes().stream()
                     .filter(t -> t.getDeclaringType() == null)
                     .filter(t -> !t.isLocalType() && !t.isAnonymous() && t.getParent(CtBlock.class) == null)
@@ -240,15 +277,23 @@ public final class JavaToCpp {
                     .toList();
             types = reachableTopLevelTypes(types);
             types = dependencyOrder(types);
+            StringBuilder body = new StringBuilder();
+            StringBuilder oldOut = out;
+            out = body;
             for (CtType<?> type : types) emitForward(type);
             out.append('\n');
             for (CtType<?> type : types) emitType(type);
+            for (CtConstructor<?> ctor : deferredConstructors) emitDeferredConstructor(ctor);
             for (CtMethod<?> method : deferredMethods) emitDeferredMethod(method);
-            out.append("\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n");
+            out.append("\nint main() {\n    ios::sync_with_stdio(false);\n    cin.tie(nullptr);\n    cout << setprecision(16);\n");
             if (types.stream().noneMatch(t -> t.getSimpleName().equals("Main"))) {
                 throw unsupported(model.getRootPackage(), "Main class is required");
             }
             out.append("    Main::javaMain({});\n    return 0;\n}\n");
+            String bodyCode = body.toString();
+            oldOut.append(CppRuntimePrelude.preludeFor(bodyCode));
+            oldOut.append(bodyCode);
+            out = oldOut;
             return out.toString();
         }
 
@@ -303,6 +348,12 @@ public final class JavaToCpp {
                 String top = topLevelName(reference);
                 if (!top.equals(t.getSimpleName()) && declaredTypes.contains(top)) result.add(top);
             }
+            for (spoon.reflect.reference.CtFieldReference<?> fRef : t.getElements(new TypeFilter<>(spoon.reflect.reference.CtFieldReference.class))) {
+                if (fRef.getDeclaringType() != null) {
+                    String top = topLevelName(fRef.getDeclaringType());
+                    if (!top.equals(t.getSimpleName()) && declaredTypes.contains(top)) result.add(top);
+                }
+            }
             return result;
         }
 
@@ -335,9 +386,10 @@ public final class JavaToCpp {
             if (!type.isLocalType() && !type.isInterface() && !hasDeclaredSuperclass) {
                 cppBases.add("public std::enable_shared_from_this<" + id(type.getSimpleName()) + templateArgs(type.getFormalCtTypeParameters()) + ">");
             }
-            if (type instanceof CtClass<?> cls && cls.getSuperclass() != null
+            if (type instanceof CtClass<?> cls && !(type instanceof spoon.reflect.declaration.CtEnum<?>) && cls.getSuperclass() != null
                     && !cls.getSuperclass().getQualifiedName().equals("java.lang.Object")
-                    && !cls.getSuperclass().getQualifiedName().equals("java.lang.Record")) {
+                    && !cls.getSuperclass().getQualifiedName().equals("java.lang.Record")
+                    && !cls.getSuperclass().getQualifiedName().startsWith("java.lang.Enum")) {
                 String baseStr = rawCustomType(cls.getSuperclass());
                 if (!baseStr.contains("<") && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
                     StringBuilder sb = new StringBuilder(baseStr).append('<');
@@ -378,12 +430,27 @@ public final class JavaToCpp {
             indent++;
             if (type instanceof CtClass<?> cls && cls.getSuperclass() != null
                     && !cls.getSuperclass().getQualifiedName().equals("java.lang.Object")
-                    && !cls.getSuperclass().getQualifiedName().equals("java.lang.Record")
-                    ) {
+                    && !cls.getSuperclass().getQualifiedName().equals("java.lang.Record")) {
                 String baseName = rawCustomType(cls.getSuperclass());
+                if (!baseName.contains("<") && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
+                    StringBuilder sb = new StringBuilder(baseName).append('<');
+                    List<CtTypeReference<?>> args = cls.getSuperclass().getActualTypeArguments();
+                    for (int i = 0; i < args.size(); i++) {
+                        if (i > 0) sb.append(", ");
+                        sb.append(type(args.get(i)));
+                    }
+                    baseName = sb.append('>').toString();
+                }
                 CtType<?> baseType = cls.getSuperclass().getTypeDeclaration();
-                if (baseType != null) {
-                    Set<String> thisMethodNames = type.getMethods().stream().map(CtMethod::getSimpleName).collect(java.util.stream.Collectors.toSet());
+                if (baseType != null && (!baseName.contains("<") || isDeclaredType(cls.getSuperclass()) || type.getFormalCtTypeParameters().isEmpty())) {
+                    Set<String> thisMethodNames = new HashSet<>();
+                    for (CtMethod<?> m : type.getMethods()) thisMethodNames.add(m.getSimpleName());
+                    for (CtTypeReference<?> iface : collectAllSuperInterfaces(type)) {
+                        CtType<?> ifaceDecl = iface.getTypeDeclaration();
+                        if (ifaceDecl != null) {
+                            for (CtMethod<?> m : ifaceDecl.getMethods()) thisMethodNames.add(m.getSimpleName());
+                        }
+                    }
                     Set<String> baseMethodNames = baseType.getMethods().stream().map(CtMethod::getSimpleName).collect(java.util.stream.Collectors.toSet());
                     for (String mName : thisMethodNames) {
                         if (baseMethodNames.contains(mName)) {
@@ -392,29 +459,68 @@ public final class JavaToCpp {
                     }
                 }
             }
+            for (CtTypeReference<?> ifaceRef : type.getSuperInterfaces()) {
+                if (isDeclaredType(ifaceRef)) {
+                    String baseName = rawCustomType(ifaceRef);
+                    CtType<?> baseType = ifaceRef.getTypeDeclaration();
+                    if (baseType != null) {
+                        Set<String> thisMethodNames = new HashSet<>();
+                        for (CtMethod<?> m : type.getMethods()) thisMethodNames.add(m.getSimpleName());
+                        Set<String> baseMethodNames = baseType.getMethods().stream().map(CtMethod::getSimpleName).collect(java.util.stream.Collectors.toSet());
+                        for (String mName : thisMethodNames) {
+                            if (baseMethodNames.contains(mName)) {
+                                line("using " + baseName + "::" + id(mName) + ";");
+                            }
+                        }
+                    }
+                }
+            }
             if (isNonStaticNested(type.getReference())) {
                 line(id(type.getDeclaringType().getSimpleName()) + "* outer;");
             }
-            for (CtType<?> nested : type.getNestedTypes()) {
+            List<CtType<?>> nestedTypes = nestedDependencyOrder(new java.util.ArrayList<>(type.getNestedTypes()));
+            for (CtType<?> nested : nestedTypes) {
                 if (!isRuntimeType(nested.getSimpleName()) && !nested.isLocalType()) {
                     writeIndent();
                     emitTemplate(nested.getFormalCtTypeParameters());
                     out.append("struct ").append(id(nested.getSimpleName())).append(";\n");
                 }
             }
-            for (CtType<?> nested : type.getNestedTypes()) {
+            for (CtType<?> nested : nestedTypes) {
                 if (!isRuntimeType(nested.getSimpleName())) emitType(nested);
             }
-            if (type instanceof CtClass<?> cls) {
-                for (CtConstructor<?> constructor : cls.getConstructors()) emitConstructor(constructor, type);
+            if (type.isInterface() || !type.getMethods().isEmpty()) {
+                line("virtual ~" + id(type.getSimpleName()) + "() = default;");
             }
+            if (type instanceof CtClass<?> cls) {
+                if (cls instanceof CtRecord record && cls.getConstructors().isEmpty()) {
+                    emitRecordCanonicalConstructor(record);
+                } else {
+                    for (CtConstructor<?> constructor : cls.getConstructors()) emitConstructor(constructor, type);
+                }
+            }
+            boolean hasIndexAccess = type.getMethods().stream().anyMatch(m -> m.getSimpleName().equals("get") && m.getParameters().size() == 1)
+                    && type.getFields().stream().anyMatch(f -> f.getSimpleName().equals("len") || f.getSimpleName().equals("tail") || f.getSimpleName().equals("size"));
+            Set<String> emittedMethodSignatures = new HashSet<>();
             for (CtMethod<?> method : type.getMethods()) {
-                if (isPrimitiveIteratorMethod(method)) emitCppIterator(type);
-                else emitMethod(method);
+                if (isPrimitiveIteratorMethod(method) && hasIndexAccess) {
+                    emitCppIterator(type);
+                } else {
+                    StringBuilder sig = new StringBuilder(id(method.getSimpleName())).append('(');
+                    for (int pIdx = 0; pIdx < method.getParameters().size(); pIdx++) {
+                        if (pIdx > 0) sig.append(", ");
+                        sig.append(type(method.getParameters().get(pIdx).getType()));
+                    }
+                    sig.append(')');
+                    if (method.getSimpleName().equals("iterator") && method.getParameters().isEmpty()) sig.append(" const");
+                    if (emittedMethodSignatures.add(sig.toString())) {
+                        emitMethod(method);
+                    }
+                }
             }
             for (CtField<?> field : type.getFields()) emitField(field);
             CtMethod<?> iterMethod = type.getMethods().stream().filter(m -> m.getSimpleName().equals("iterator") && m.getParameters().isEmpty()).findFirst().orElse(null);
-            boolean hasPrimitiveIter = type.getMethods().stream().anyMatch(this::isPrimitiveIteratorMethod);
+            boolean hasPrimitiveIter = type.getMethods().stream().anyMatch(this::isPrimitiveIteratorMethod) && hasIndexAccess;
             if (iterMethod != null && !hasPrimitiveIter) {
                 String iterType = type(iterMethod.getType());
                 line("struct CppIterator {");
@@ -477,6 +583,49 @@ public final class JavaToCpp {
 
         /** フィールド f を出力する。計算量: O(|f|)。 */
         // 未テスト
+        private boolean isBoxedPrimitive(CtTypeReference<?> t) {
+            if (t == null) return false;
+            return switch (t.getQualifiedName()) {
+                case "java.lang.Boolean", "java.lang.Byte", "java.lang.Short", "java.lang.Integer",
+                        "java.lang.Long", "java.lang.Character", "java.lang.Float", "java.lang.Double" -> true;
+                default -> false;
+            };
+        }
+
+        private boolean isMethodReturningNull(CtMethod<?> method) {
+            if (method == null || method.getBody() == null) return false;
+            for (CtReturn<?> ret : method.getBody().getElements(new TypeFilter<>(CtReturn.class))) {
+                if (ret.getReturnedExpression() instanceof CtLiteral<?> lit && lit.getValue() == null) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private boolean isVariableComparedToNull(CtVariable<?> var, CtElement scope) {
+            if (scope == null) return false;
+            for (CtBinaryOperator<?> op : scope.getElements(new TypeFilter<>(CtBinaryOperator.class))) {
+                if (op.getKind() == spoon.reflect.code.BinaryOperatorKind.EQ || op.getKind() == spoon.reflect.code.BinaryOperatorKind.NE) {
+                    boolean leftNull = op.getLeftHandOperand() instanceof CtLiteral<?> lit && lit.getValue() == null;
+                    boolean rightNull = op.getRightHandOperand() instanceof CtLiteral<?> lit && lit.getValue() == null;
+                    if (leftNull || rightNull) {
+                        CtExpression<?> other = leftNull ? op.getRightHandOperand() : op.getLeftHandOperand();
+                        if (other instanceof CtVariableAccess<?> va && var.equals(va.getVariable().getDeclaration())) {
+                            return true;
+                        }
+                    }
+                }
+            }
+            for (CtAssignment<?, ?> assign : scope.getElements(new TypeFilter<>(CtAssignment.class))) {
+                if (assign.getAssignment() instanceof CtLiteral<?> lit && lit.getValue() == null) {
+                    if (assign.getAssigned() instanceof CtVariableAccess<?> va && var.equals(va.getVariable().getDeclaration())) {
+                        return true;
+                    }
+                }
+            }
+            return false;
+        }
+
         private void emitField(CtField<?> field) {
             StringBuilder s = new StringBuilder();
             boolean emittedStatic = field.hasModifier(ModifierKind.STATIC)
@@ -484,13 +633,20 @@ public final class JavaToCpp {
             if (emittedStatic) {
                 s.append("inline static ");
             }
-            s.append(type(field.getType())).append(' ').append(fieldName(field.getReference()));
+            String fieldTypeStr = (field.getType() instanceof CtTypeParameterReference && isVariableComparedToNull(field, field.getDeclaringType()))
+                    ? "typename Nullable<" + type(field.getType()) + ">::type"
+                    : ((isBoxedPrimitive(field.getType()) && isVariableComparedToNull(field, field.getDeclaringType()))
+                    ? "JOptionalVal<" + type(field.getType()) + ">"
+                    : type(field.getType()));
+            s.append(fieldTypeStr).append(' ').append(fieldName(field.getReference()));
             boolean previousStaticContext = currentStaticContext;
             currentStaticContext = emittedStatic;
             if (field.getDefaultExpression() != null) {
                 String value = initializer(field.getType(), field.getDefaultExpression());
                 if (emittedStatic) value = value.replace("this->", "");
                 s.append(" = ").append(value);
+            } else {
+                s.append(" = {}");
             }
             currentStaticContext = previousStaticContext;
             s.append(';');
@@ -500,7 +656,7 @@ public final class JavaToCpp {
         private boolean containsTypeParameterNotInOwner(CtTypeReference<?> t, CtType<?> owner) {
             if (t == null) return false;
             if (t instanceof CtTypeParameterReference tpr) {
-                if (owner != null && owner.getFormalCtTypeParameters().stream().anyMatch(p -> p.getSimpleName().equals(tpr.getSimpleName()))) {
+                if (owner != null && owner.getFormalCtTypeParameters().stream().anyMatch(p -> typeParameterName(p).equals(typeParameterName(tpr)) || p.getSimpleName().equals(tpr.getSimpleName()))) {
                     return false;
                 }
                 return true;
@@ -509,6 +665,14 @@ public final class JavaToCpp {
                 if (containsTypeParameterNotInOwner(arg, owner)) return true;
             }
             return false;
+        }
+
+        /** t の C++ 表現が shared_ptr などのポインタ型かどうか判定する。計算量: O(1)。 */
+        // 未テスト
+        private boolean isPointerType(CtTypeReference<?> t) {
+            if (t == null) return false;
+            String typeStr = type(t);
+            return typeStr.startsWith("shared_ptr<") || typeStr.endsWith("*");
         }
 
         private CtTypeReference<?> substituteTypeArguments(CtTypeReference<?> type, java.util.Map<String, CtTypeReference<?>> map) {
@@ -567,10 +731,96 @@ public final class JavaToCpp {
                     if (parentType != null) rootType = substituteTypeArguments(parentType, map);
                 }
             }
-            if (rootType != null && containsTypeParameterNotInOwner(rootType, method.getDeclaringType())) {
+            if (rootType != null && containsTypeParameterNotInOwner(rootType, owner)) {
                 return null;
             }
             return rootType;
+        }
+
+        private List<CtTypeReference<?>> getBaseMethodParameterTypes(CtMethod<?> method, CtTypeReference<?> ownerRef) {
+            if (ownerRef == null) return null;
+            CtType<?> decl = ownerRef.getTypeDeclaration();
+            if (decl == null) return null;
+            java.util.Map<String, CtTypeReference<?>> map = new java.util.HashMap<>();
+            for (int i = 0; i < Math.min(decl.getFormalCtTypeParameters().size(), ownerRef.getActualTypeArguments().size()); i++) {
+                map.put(decl.getFormalCtTypeParameters().get(i).getSimpleName(), ownerRef.getActualTypeArguments().get(i));
+            }
+            for (CtMethod<?> m : decl.getMethods()) {
+                if (m.getSimpleName().equals(method.getSimpleName()) && m.getParameters().size() == method.getParameters().size()) {
+                    List<CtTypeReference<?>> res = new java.util.ArrayList<>();
+                    for (CtParameter<?> p : m.getParameters()) {
+                        res.add(substituteTypeArguments(p.getType(), map));
+                    }
+                    return res;
+                }
+            }
+            for (CtTypeReference<?> iface : decl.getSuperInterfaces()) {
+                CtTypeReference<?> subIface = substituteTypeArguments(iface, map);
+                List<CtTypeReference<?>> res = getBaseMethodParameterTypes(method, subIface);
+                if (res != null) return res;
+            }
+            if (decl instanceof CtClass<?> cls && cls.getSuperclass() != null) {
+                CtTypeReference<?> subSuper = substituteTypeArguments(cls.getSuperclass(), map);
+                List<CtTypeReference<?>> res = getBaseMethodParameterTypes(method, subSuper);
+                if (res != null) return res;
+            }
+            return null;
+        }
+
+        private List<Boolean> getBaseMethodParameterIsTypeParam(CtMethod<?> method, CtTypeReference<?> ownerRef) {
+            if (ownerRef == null) return null;
+            CtType<?> decl = ownerRef.getTypeDeclaration();
+            if (decl == null) return null;
+            java.util.Map<String, CtTypeReference<?>> map = new java.util.HashMap<>();
+            for (int i = 0; i < Math.min(decl.getFormalCtTypeParameters().size(), ownerRef.getActualTypeArguments().size()); i++) {
+                map.put(decl.getFormalCtTypeParameters().get(i).getSimpleName(), ownerRef.getActualTypeArguments().get(i));
+            }
+            for (CtMethod<?> m : decl.getMethods()) {
+                if (m.getSimpleName().equals(method.getSimpleName()) && m.getParameters().size() == method.getParameters().size()) {
+                    List<Boolean> res = new java.util.ArrayList<>();
+                    for (CtParameter<?> p : m.getParameters()) {
+                        res.add(p.getType() instanceof spoon.reflect.reference.CtTypeParameterReference);
+                    }
+                    return res;
+                }
+            }
+            for (CtTypeReference<?> iface : decl.getSuperInterfaces()) {
+                CtTypeReference<?> subIface = substituteTypeArguments(iface, map);
+                List<Boolean> res = getBaseMethodParameterIsTypeParam(method, subIface);
+                if (res != null) return res;
+            }
+            if (decl instanceof CtClass<?> cls && cls.getSuperclass() != null) {
+                CtTypeReference<?> subSuper = substituteTypeArguments(cls.getSuperclass(), map);
+                List<Boolean> res = getBaseMethodParameterIsTypeParam(method, subSuper);
+                if (res != null) return res;
+            }
+            return null;
+        }
+
+        private CtTypeReference<?> getBaseMethodReturnTypeRef(CtMethod<?> method, CtTypeReference<?> ownerRef) {
+            if (ownerRef == null) return null;
+            CtType<?> decl = ownerRef.getTypeDeclaration();
+            if (decl == null) return null;
+            java.util.Map<String, CtTypeReference<?>> map = new java.util.HashMap<>();
+            for (int i = 0; i < Math.min(decl.getFormalCtTypeParameters().size(), ownerRef.getActualTypeArguments().size()); i++) {
+                map.put(decl.getFormalCtTypeParameters().get(i).getSimpleName(), ownerRef.getActualTypeArguments().get(i));
+            }
+            for (CtMethod<?> m : decl.getMethods()) {
+                if (m.getSimpleName().equals(method.getSimpleName()) && m.getParameters().size() == method.getParameters().size()) {
+                    return substituteTypeArguments(m.getType(), map);
+                }
+            }
+            for (CtTypeReference<?> iface : decl.getSuperInterfaces()) {
+                CtTypeReference<?> subIface = substituteTypeArguments(iface, map);
+                CtTypeReference<?> res = getBaseMethodReturnTypeRef(method, subIface);
+                if (res != null) return res;
+            }
+            if (decl instanceof CtClass<?> cls && cls.getSuperclass() != null) {
+                CtTypeReference<?> subSuper = substituteTypeArguments(cls.getSuperclass(), map);
+                CtTypeReference<?> res = getBaseMethodReturnTypeRef(method, subSuper);
+                if (res != null) return res;
+            }
+            return null;
         }
 
         private boolean isVariableAlreadyDeclaredInBlock(CtLocalVariable<?> v) {
@@ -598,40 +848,98 @@ public final class JavaToCpp {
             appendParameters(s, constructor.getParameters());
             s.append(')');
             List<String> initializers = new java.util.ArrayList<>();
-            if (isNonStaticNested(owner.getReference())) initializers.add("outer(outer_)");
+            boolean isDelegating = false;
             if (!constructor.getBody().getStatements().isEmpty()
                     && constructor.getBody().getStatement(0) instanceof CtInvocation<?> invocation
                     && invocation.getExecutable().getSimpleName().equals("<init>")
                     && invocation.getExecutable().getDeclaringType() != null
                     && !invocation.getExecutable().getDeclaringType().getQualifiedName().equals("java.lang.Object")
-                    && !invocation.getExecutable().getDeclaringType().getQualifiedName().equals("java.lang.Record")
-                    && (invocation.getTarget() instanceof CtSuperAccess<?>
-                    || !simpleName(invocation.getExecutable().getDeclaringType().getSimpleName())
-                    .equals(simpleName(owner.getSimpleName())))) {
-                String baseTypeStr = rawCustomType(invocation.getExecutable().getDeclaringType());
-                if (owner instanceof CtClass<?> cls && cls.getSuperclass() != null && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
-                    StringBuilder sb = new StringBuilder(baseTypeStr).append('<');
-                    List<CtTypeReference<?>> superArgs = cls.getSuperclass().getActualTypeArguments();
-                    for (int idx = 0; idx < superArgs.size(); idx++) {
-                        if (idx > 0) sb.append(", ");
-                        sb.append(type(superArgs.get(idx)));
+                    && !invocation.getExecutable().getDeclaringType().getQualifiedName().equals("java.lang.Record")) {
+                isDelegating = !(invocation.getTarget() instanceof CtSuperAccess<?>)
+                        && simpleName(invocation.getExecutable().getDeclaringType().getSimpleName())
+                        .equals(simpleName(owner.getSimpleName()));
+                String baseTypeStr;
+                if (isDelegating) {
+                    baseTypeStr = id(owner.getSimpleName());
+                    if (!owner.getFormalCtTypeParameters().isEmpty()) {
+                        baseTypeStr += templateArgs(owner.getFormalCtTypeParameters());
                     }
-                    sb.append('>');
-                    baseTypeStr = sb.toString();
-                } else if (!owner.getFormalCtTypeParameters().isEmpty()) {
-                    baseTypeStr += templateArgs(owner.getFormalCtTypeParameters());
+                } else {
+                    baseTypeStr = rawCustomType(invocation.getExecutable().getDeclaringType());
+                    if (owner instanceof CtClass<?> cls && cls.getSuperclass() != null && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
+                        StringBuilder sb = new StringBuilder(baseTypeStr).append('<');
+                        List<CtTypeReference<?>> superArgs = cls.getSuperclass().getActualTypeArguments();
+                        for (int idx = 0; idx < superArgs.size(); idx++) {
+                            if (idx > 0) sb.append(", ");
+                            sb.append(type(superArgs.get(idx)));
+                        }
+                        sb.append('>');
+                        baseTypeStr = sb.toString();
+                    } else if (!owner.getFormalCtTypeParameters().isEmpty()) {
+                        baseTypeStr += templateArgs(owner.getFormalCtTypeParameters());
+                    }
                 }
                 currentInitializerListParameters = constructor.getParameters();
-                initializers.add(baseTypeStr + arguments(invocation.getArguments()));
+                String delegatingArgs = arguments(invocation.getArguments());
+                if (isDelegating && isNonStaticNested(owner.getReference())) {
+                    delegatingArgs = "(outer_" + (invocation.getArguments().isEmpty() ? "" : ", " + delegatingArgs.substring(1, delegatingArgs.length() - 1)) + ")";
+                }
+                initializers.add(baseTypeStr + delegatingArgs);
                 currentInitializerListParameters = null;
             }
-            if (!initializers.isEmpty()) s.append(" : ").append(String.join(", ", initializers));
-            s.append(' ');
-            writeIndent();
-            out.append(s);
-            emitBlock(constructor.getBody(), false, constructor.getParameters());
-            out.append('\n');
-            if (constructor.getParameters().stream().anyMatch(p -> type(p.getType()).startsWith("function<"))) {
+            if (!isDelegating && isNonStaticNested(owner.getReference())) {
+                initializers.add("outer(outer_)");
+            }
+            boolean isDeferred = owner.getDeclaringType() == null
+                    && !owner.isLocalType()
+                    && owner.getParent(CtBlock.class) == null
+                    && owner.getFormalCtTypeParameters().isEmpty()
+                    && constructor.getBody() != null;
+            if (isDeferred) {
+                writeIndent();
+                out.append(s).append(";\n");
+                deferredConstructors.add(constructor);
+            } else {
+                if (!initializers.isEmpty()) s.append(" : ").append(String.join(", ", initializers));
+                s.append(' ');
+                writeIndent();
+                out.append(s);
+                emitConstructorBlock(constructor, isDelegating);
+                out.append('\n');
+            }
+            if (!constructor.getParameters().isEmpty() && !owner.isLocalType()
+                    && (owner.getClass().getSimpleName().contains("Record") || (owner instanceof CtClass<?> c && c.getSuperclass() != null && c.getSuperclass().getQualifiedName().equals("java.lang.Record")))) {
+                StringBuilder ts = new StringBuilder();
+                ts.append("template<");
+                for (int i = 0; i < constructor.getParameters().size(); i++) {
+                    if (i > 0) ts.append(", ");
+                    ts.append("class F").append(i);
+                }
+                ts.append(", class = enable_if_t<!is_same_v<decay_t<F0>, ").append(id(owner.getSimpleName())).append(">");
+                ts.append(" && !(");
+                for (int i = 0; i < constructor.getParameters().size(); i++) {
+                    if (i > 0) ts.append(" && ");
+                    String pType = type(constructor.getParameters().get(i).getType());
+                    ts.append("is_same_v<decay_t<F").append(i).append(">, ").append(pType).append(">");
+                }
+                ts.append(")");
+                ts.append(">> ");
+                ts.append(id(owner.getSimpleName())).append("(");
+                if (isNonStaticNested(owner.getReference())) {
+                    ts.append(id(owner.getDeclaringType().getSimpleName())).append("* outer_, ");
+                }
+                for (int i = 0; i < constructor.getParameters().size(); i++) {
+                    if (i > 0) ts.append(", ");
+                    ts.append("F").append(i).append("&& p").append(i);
+                }
+                ts.append(") {\n");
+                for (int i = 0; i < constructor.getParameters().size(); i++) {
+                    CtParameter<?> p = constructor.getParameters().get(i);
+                    ts.append("    jassign(this->").append(fieldName(owner.getField(p.getSimpleName()).getReference())).append(", std::forward<F").append(i).append(">(p").append(i).append("));\n");
+                }
+                ts.append("}\n");
+                line(ts.toString());
+            } else if (constructor.getParameters().stream().anyMatch(p -> type(p.getType()).startsWith("function<"))) {
                 StringBuilder ts = new StringBuilder();
                 ts.append("template<");
                 for (int i = 0; i < constructor.getParameters().size(); i++) {
@@ -699,7 +1007,10 @@ public final class JavaToCpp {
                 }
                 returnTypeRef = baseReturnTypeRef;
             }
-            s.append(type(returnTypeRef)).append(' ').append(methodName).append('(');
+            String returnTypeStr = (isBoxedPrimitive(returnTypeRef) && isMethodReturningNull(method))
+                    ? "JOptionalVal<" + type(returnTypeRef) + ">"
+                    : type(returnTypeRef);
+            s.append(returnTypeStr).append(' ').append(methodName).append('(');
             appendParameters(s, method.getParameters());
             s.append(')');
             if (method.getSimpleName().equals("iterator") && method.getParameters().isEmpty()) {
@@ -721,8 +1032,7 @@ public final class JavaToCpp {
             if (method.getDeclaringType().getDeclaringType() == null
                     && !method.getDeclaringType().isLocalType()
                     && method.getDeclaringType().getParent(CtBlock.class) == null
-                    && method.getDeclaringType().getFormalCtTypeParameters().isEmpty()
-                    && method.getFormalCtTypeParameters().isEmpty()) {
+                    && method.getDeclaringType().getFormalCtTypeParameters().isEmpty()) {
                 s.append(';');
                 line(s.toString());
                 deferredMethods.add(method);
@@ -744,6 +1054,34 @@ public final class JavaToCpp {
             for (CtTypeReference<?> ref : type.getSuperInterfaces()) {
                 CtType<?> decl = ref.getTypeDeclaration();
                 if (decl != null) result.addAll(collectAllSuperInterfaces(decl));
+            }
+            return result;
+        }
+
+        /** 入れ子型を入力として基底型が先に来る依存関係順にソートする。計算量: O(N^2)。 */
+        // 未テスト
+        private List<CtType<?>> nestedDependencyOrder(List<CtType<?>> input) {
+            List<CtType<?>> remaining = new java.util.ArrayList<>(input);
+            List<CtType<?>> result = new java.util.ArrayList<>();
+            Set<String> declared = new HashSet<>();
+            for (CtType<?> t : input) declared.add(t.getSimpleName());
+            remaining.sort(Comparator.comparing(CtType::getSimpleName));
+            while (!remaining.isEmpty()) {
+                List<CtType<?>> candidates = new java.util.ArrayList<>();
+                for (CtType<?> t : remaining) {
+                    Set<String> bases = new HashSet<>();
+                    if (t instanceof CtClass<?> cls && cls.getSuperclass() != null) bases.add(cls.getSuperclass().getSimpleName());
+                    for (CtTypeReference<?> iface : t.getSuperInterfaces()) bases.add(iface.getSimpleName());
+                    bases.remove(t.getSimpleName());
+                    bases.removeIf(n -> !declared.contains(n));
+                    if (bases.stream().noneMatch(b -> remaining.stream().anyMatch(r -> r.getSimpleName().equals(b)))) {
+                        candidates.add(t);
+                    }
+                }
+                if (candidates.isEmpty()) candidates = remaining;
+                CtType<?> next = candidates.get(0);
+                result.add(next);
+                remaining.remove(next);
             }
             return result;
         }
@@ -779,6 +1117,70 @@ public final class JavaToCpp {
             }
         }
 
+        /** コンストラクタ c のクラス外定義を出力する。計算量: O(|c|)。 */
+        // 未テスト
+        private void emitDeferredConstructor(CtConstructor<?> constructor) {
+            CtType<?> owner = constructor.getDeclaringType();
+            CtType<?> previousType = currentType;
+            currentType = owner;
+            StringBuilder s = new StringBuilder(id(owner.getSimpleName())).append("::").append(id(owner.getSimpleName())).append('(');
+            if (isNonStaticNested(owner.getReference())) {
+                s.append(id(owner.getDeclaringType().getSimpleName())).append("* outer_");
+                if (!constructor.getParameters().isEmpty()) s.append(", ");
+            }
+            appendParameters(s, constructor.getParameters());
+            s.append(')');
+            List<String> initializers = new java.util.ArrayList<>();
+            boolean isDelegating = false;
+            if (!constructor.getBody().getStatements().isEmpty()
+                    && constructor.getBody().getStatement(0) instanceof CtInvocation<?> invocation
+                    && invocation.getExecutable().getSimpleName().equals("<init>")
+                    && invocation.getExecutable().getDeclaringType() != null
+                    && !invocation.getExecutable().getDeclaringType().getQualifiedName().equals("java.lang.Object")
+                    && !invocation.getExecutable().getDeclaringType().getQualifiedName().equals("java.lang.Record")) {
+                isDelegating = !(invocation.getTarget() instanceof CtSuperAccess<?>)
+                        && simpleName(invocation.getExecutable().getDeclaringType().getSimpleName())
+                        .equals(simpleName(owner.getSimpleName()));
+                String baseTypeStr;
+                if (isDelegating) {
+                    baseTypeStr = id(owner.getSimpleName());
+                    if (!owner.getFormalCtTypeParameters().isEmpty()) {
+                        baseTypeStr += templateArgs(owner.getFormalCtTypeParameters());
+                    }
+                } else {
+                    baseTypeStr = rawCustomType(invocation.getExecutable().getDeclaringType());
+                    if (owner instanceof CtClass<?> cls && cls.getSuperclass() != null && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
+                        StringBuilder sb = new StringBuilder(baseTypeStr).append('<');
+                        List<CtTypeReference<?>> superArgs = cls.getSuperclass().getActualTypeArguments();
+                        for (int idx = 0; idx < superArgs.size(); idx++) {
+                            if (idx > 0) sb.append(", ");
+                            sb.append(type(superArgs.get(idx)));
+                        }
+                        sb.append('>');
+                        baseTypeStr = sb.toString();
+                    } else if (!owner.getFormalCtTypeParameters().isEmpty()) {
+                        baseTypeStr += templateArgs(owner.getFormalCtTypeParameters());
+                    }
+                }
+                currentInitializerListParameters = constructor.getParameters();
+                String delegatingArgs = arguments(invocation.getArguments());
+                if (isDelegating && isNonStaticNested(owner.getReference())) {
+                    delegatingArgs = "(outer_" + (invocation.getArguments().isEmpty() ? "" : ", " + delegatingArgs.substring(1, delegatingArgs.length() - 1)) + ")";
+                }
+                initializers.add(baseTypeStr + delegatingArgs);
+                currentInitializerListParameters = null;
+            }
+            if (!isDelegating && isNonStaticNested(owner.getReference())) {
+                initializers.add("outer(outer_)");
+            }
+            if (!initializers.isEmpty()) s.append(" : ").append(String.join(", ", initializers));
+            s.append(' ');
+            out.append(s);
+            emitConstructorBlock(constructor, isDelegating);
+            out.append("\n\n");
+            currentType = previousType;
+        }
+
         /** 非テンプレートメソッド m のクラス外定義を出力する。計算量: O(|m|)。 */
         // 未テスト
         private void emitDeferredMethod(CtMethod<?> method) {
@@ -795,10 +1197,17 @@ public final class JavaToCpp {
                 returnTypeRef = baseReturnTypeRef;
             }
             currentType = null;
-            String returnType = type(returnTypeRef);
+            String returnType = (isBoxedPrimitive(returnTypeRef) && isMethodReturningNull(method))
+                    ? "JOptionalVal<" + type(returnTypeRef) + ">"
+                    : type(returnTypeRef);
             currentType = method.getDeclaringType();
             currentStaticContext = method.hasModifier(ModifierKind.STATIC);
-            StringBuilder s = new StringBuilder(returnType).append(' ')
+            StringBuilder s = new StringBuilder();
+            if (!method.getFormalCtTypeParameters().isEmpty()) {
+                writeIndent();
+                emitTemplate(method.getFormalCtTypeParameters());
+            }
+            s.append(returnType).append(' ')
                     .append(id(method.getDeclaringType().getSimpleName())).append("::");
             String methodName = method.getDeclaringType().getSimpleName().equals("Main")
                     && method.getSimpleName().equals("main") ? "javaMain" : id(method.getSimpleName());
@@ -820,51 +1229,338 @@ public final class JavaToCpp {
                 "void", "bool", "int8_t", "int16_t", "int", "long long", "float", "double", "char", "nullptr_t"
         );
 
+        private boolean isParameterReassigned(CtParameter<?> p, CtBlock<?> block) {
+            if (p == null || block == null) return false;
+            String name = p.getSimpleName();
+            return block.getElements(new TypeFilter<>(CtAssignment.class)).stream()
+                    .anyMatch(a -> a.getAssigned() instanceof CtVariableAccess<?> va
+                            && va.getVariable() != null
+                            && name.equals(va.getVariable().getSimpleName()));
+        }
+
+        private boolean isArrayElementModified(CtLocalVariable<?> v, CtBlock<?> block) {
+            if (v == null || block == null) return false;
+            String name = v.getSimpleName();
+            return block.getElements(new TypeFilter<>(CtArrayWrite.class)).stream()
+                    .anyMatch(aw -> {
+                        CtExpression<?> target = aw.getTarget();
+                        while (target instanceof CtArrayAccess<?, ?> aa) {
+                            target = aa.getTarget();
+                        }
+                        return target instanceof CtVariableAccess<?> va &&
+                               va.getVariable() != null &&
+                               name.equals(va.getVariable().getSimpleName());
+                    });
+        }
+
+        private boolean isVariableReassigned(CtLocalVariable<?> v, CtBlock<?> block) {
+            if (v == null || block == null) return false;
+            String name = v.getSimpleName();
+            return block.getElements(new TypeFilter<>(CtAssignment.class)).stream()
+                    .anyMatch(a -> a.getAssigned() instanceof CtVariableAccess<?> va &&
+                                   va.getVariable() != null &&
+                                   name.equals(va.getVariable().getSimpleName()));
+        }
+
+        private boolean hasSideEffects(CtElement e) {
+            if (e == null) return false;
+            if (!e.getElements(new TypeFilter<>(CtInvocation.class)).isEmpty()) return true;
+            if (!e.getElements(new TypeFilter<>(CtConstructorCall.class)).isEmpty()) return true;
+            if (!e.getElements(new TypeFilter<>(CtAssignment.class)).isEmpty()) return true;
+            if (!e.getElements(new TypeFilter<>(CtOperatorAssignment.class)).isEmpty()) return true;
+            for (CtUnaryOperator<?> u : e.getElements(new TypeFilter<>(CtUnaryOperator.class))) {
+                spoon.reflect.code.UnaryOperatorKind k = u.getKind();
+                if (k == spoon.reflect.code.UnaryOperatorKind.PREINC || k == spoon.reflect.code.UnaryOperatorKind.POSTINC
+                        || k == spoon.reflect.code.UnaryOperatorKind.PREDEC || k == spoon.reflect.code.UnaryOperatorKind.POSTDEC) {
+                    return true;
+                }
+            }
+            return false;
+        }
+
+        private void emitRecordCanonicalConstructor(CtRecord record) {
+            StringBuilder s = new StringBuilder(id(record.getSimpleName())).append('(');
+            List<CtRecordComponent> components = new java.util.ArrayList<>(record.getRecordComponents());
+            for (int i = 0; i < components.size(); i++) {
+                if (i > 0) s.append(", ");
+                CtRecordComponent rc = components.get(i);
+                String pType = type(rc.getType());
+                if (isPassByReferenceType(pType)) {
+                    s.append("const ").append(pType).append("& ").append(id(rc.getSimpleName())).append("_const");
+                } else {
+                    s.append(pType).append(' ').append(id(rc.getSimpleName()));
+                }
+            }
+            s.append(") {\n");
+            for (CtRecordComponent rc : components) {
+                String name = id(rc.getSimpleName());
+                String pName = isPassByReferenceType(type(rc.getType())) ? name + "_const" : name;
+                s.append("        (this->").append(name).append("_ = ").append(pName).append(");\n");
+            }
+            s.append("    }");
+            line(s.toString());
+
+            if (!components.isEmpty() && !record.isLocalType()) {
+                StringBuilder ts = new StringBuilder();
+                ts.append("template<");
+                for (int i = 0; i < components.size(); i++) {
+                    if (i > 0) ts.append(", ");
+                    ts.append("class F").append(i);
+                }
+                ts.append(", class = enable_if_t<!is_same_v<decay_t<F0>, ").append(id(record.getSimpleName())).append(">");
+                ts.append(" && !(");
+                for (int i = 0; i < components.size(); i++) {
+                    if (i > 0) ts.append(" && ");
+                    ts.append("is_same_v<decay_t<F").append(i).append(">, ").append(type(components.get(i).getType())).append(">");
+                }
+                ts.append(")");
+                ts.append(">> ");
+                ts.append(id(record.getSimpleName())).append('(');
+                for (int i = 0; i < components.size(); i++) {
+                    if (i > 0) ts.append(", ");
+                    ts.append("F").append(i).append("&& p").append(i);
+                }
+                ts.append(") {\n");
+                for (int i = 0; i < components.size(); i++) {
+                    CtRecordComponent rc = components.get(i);
+                    ts.append("    jassign(this->").append(id(rc.getSimpleName())).append("_, std::forward<F").append(i).append(">(p").append(i).append("));\n");
+                }
+                ts.append("}\n");
+                line(ts.toString());
+            }
+        }
+
         private boolean isPassByReferenceType(String parameterType) {
             return !CPP_PRIMITIVE_TYPES.contains(parameterType);
         }
 
-        /** パラメータ列 P を s へ加える。計算量: O(|P|)。 */
+        /**
+         * ラムダ l が実行コンテキストから脱出する（return文で返される）かを返す。
+         * 親が未初期化の要素に遭遇した場合は脱出しないと見なす。
+         * 計算量: O(depth)。depth はラムダから最近傍の CtExecutable までの AST 深さ。
+         */
+        private boolean isEscapingLambda(CtLambda<?> l) {
+            if (!l.isParentInitialized()) return false;
+            CtElement parent = l.getParent();
+            while (parent != null && !(parent instanceof CtExecutable<?>)) {
+                if (parent instanceof CtReturn<?>) return true;
+                if (!parent.isParentInitialized()) break;
+                parent = parent.getParent();
+            }
+            return false;
+        }
+
+        private boolean isParameterReferencedInEscapingLambda(CtParameter<?> p) {
+            CtExecutable<?> parentExec = p.getParent(CtExecutable.class);
+            if (parentExec != null) {
+                for (CtLambda<?> lambda : parentExec.getElements(new TypeFilter<>(CtLambda.class))) {
+                    if (isEscapingLambda(lambda)) {
+                        boolean matches = lambda.getElements(new TypeFilter<>(CtVariableAccess.class)).stream()
+                                .anyMatch(va -> va.getVariable() != null && va.getVariable().getSimpleName().equals(p.getSimpleName()));
+                        if (matches) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /**
+         * l が外部スコープのローカル変数（フィールドでもラムダ自身のパラメータでもない変数）を参照するか。
+         * O(n), n = l 内の CtVariableAccess 数
+         */
+        // 未テスト
+        private boolean lambdaReferencesLocalVars(CtLambda<?> l) {
+            Set<String> params = l.getParameters().stream()
+                    .map(p -> p.getSimpleName()).collect(java.util.stream.Collectors.toSet());
+            for (CtVariableAccess<?> va : l.getElements(new TypeFilter<>(CtVariableAccess.class))) {
+                if (va.getVariable() == null) continue;
+                spoon.reflect.declaration.CtVariable<?> decl = null;
+                try { decl = va.getVariable().getDeclaration(); } catch (Exception ignored) {}
+                if (decl instanceof CtField<?>) continue; // フィールドはキャプチャ不要
+                if (params.contains(va.getVariable().getSimpleName())) continue;
+                return true;
+            }
+            return false;
+        }
+
+        private boolean isParameterReferencedInLocalType(CtParameter<?> p) {
+            CtExecutable<?> parentExec = p.getParent(CtExecutable.class);
+            if (parentExec != null) {
+                for (CtType<?> localType : parentExec.getElements(new TypeFilter<>(CtType.class))) {
+                    if (localType.isLocalType() || localType.isAnonymous()) {
+                        boolean matches = localType.getElements(new TypeFilter<>(CtVariableAccess.class)).stream()
+                                .anyMatch(va -> va.getVariable() != null && va.getVariable().getSimpleName().equals(p.getSimpleName()));
+                        if (matches) return true;
+                    }
+                }
+            }
+            return false;
+        }
+
+        /** パラメータ列 P を s へ加える。計算量: O(|P| + c)。c はローカル型参照数。 */
         // 未テスト
         private void appendParameters(StringBuilder s, List<CtParameter<?>> parameters) {
+            appendParameters(s, parameters, null, null);
+        }
+
+        private void appendParameters(StringBuilder s, List<CtParameter<?>> parameters, List<CtTypeReference<?>> overrideTypes, List<Boolean> forceConstRef) {
             for (int i = 0; i < parameters.size(); i++) {
                 if (i > 0) s.append(", ");
                 CtParameter<?> p = parameters.get(i);
-                String parameterType = type(p.getType());
-                if (isPassByReferenceType(parameterType)) {
+                CtTypeReference<?> pTypeRef = (overrideTypes != null && i < overrideTypes.size()) ? overrideTypes.get(i) : p.getType();
+                String parameterType = (p.getType() instanceof CtTypeParameterReference && isVariableComparedToNull(p, p.getParent(CtExecutable.class) != null ? p.getParent(CtExecutable.class).getBody() : null))
+                        ? "typename Nullable<" + type(pTypeRef) + ">::type"
+                        : ((isBoxedPrimitive(p.getType()) && isVariableComparedToNull(p, p.getParent(CtExecutable.class) != null ? p.getParent(CtExecutable.class).getBody() : null))
+                        ? "JOptionalVal<" + type(pTypeRef) + ">"
+                        : type(pTypeRef));
+                boolean isCaptured = isParameterReferencedInLocalType(p);
+                boolean byRef = isPassByReferenceType(parameterType) || (forceConstRef != null && i < forceConstRef.size() && Boolean.TRUE.equals(forceConstRef.get(i)));
+                if (byRef) {
                     s.append("const ").append(parameterType).append("& ").append(id(p.getSimpleName())).append("_const");
+                } else if (isCaptured) {
+                    s.append(parameterType).append(' ').append(id(p.getSimpleName())).append("_param");
                 } else {
                     s.append(parameterType).append(' ').append(id(p.getSimpleName()));
                 }
             }
         }
 
+        private void emitConstructorBlock(CtConstructor<?> constructor, boolean isDelegating) {
+            writeIndent();
+            out.append("{\n");
+            indent++;
+            if (constructor.getParameters() != null) {
+                for (int i = 0; i < constructor.getParameters().size(); i++) {
+                    CtParameter<?> p = constructor.getParameters().get(i);
+                    String parameterType = type(p.getType());
+                    boolean isCaptured = isParameterReferencedInLocalType(p);
+                    boolean byRef = isPassByReferenceType(parameterType);
+                    if (isCaptured) {
+                        writeIndent();
+                        out.append("static ").append(parameterType).append(" ").append(id(p.getSimpleName())).append(";\n");
+                        writeIndent();
+                        String rhs = byRef ? id(p.getSimpleName()) + "_const" : id(p.getSimpleName()) + "_param";
+                        out.append(id(p.getSimpleName())).append(" = ").append(rhs).append(";\n");
+                    } else if (byRef) {
+                        writeIndent();
+                        boolean isReassigned = isParameterReassigned(p, constructor.getBody());
+                        if (isReassigned || parameterType.startsWith("shared_ptr<")) {
+                            out.append(parameterType).append(" ").append(id(p.getSimpleName()))
+                               .append(" = ").append(id(p.getSimpleName())).append("_const;\n");
+                        } else {
+                            out.append("auto& ").append(id(p.getSimpleName())).append(" = const_cast<").append(parameterType)
+                               .append("&>(").append(id(p.getSimpleName())).append("_const);\n");
+                        }
+                    }
+                }
+            }
+            if (constructor.getDeclaringType() instanceof CtClass<?> cls && !isDelegating) {
+                for (CtAnonymousExecutable exec : cls.getAnonymousExecutables()) {
+                    if (!exec.isStatic()) {
+                        for (CtStatement st : exec.getBody().getStatements()) {
+                            emitStatement(st);
+                        }
+                    }
+                }
+            }
+            if (constructor.getBody() != null) {
+                for (CtStatement statement : constructor.getBody().getStatements()) {
+                    emitStatement(statement);
+                }
+            }
+            indent--;
+            writeIndent();
+            out.append('}');
+        }
+
         /** ブロック b を出力する。計算量: O(|b|)。 */
         // 未テスト
         private void emitBlock(CtBlock<?> block, boolean indentOpening, List<CtParameter<?>> parameters) {
+            emitBlock(block, indentOpening, parameters, null);
+        }
+
+        private void emitBlock(CtBlock<?> block, boolean indentOpening, List<CtParameter<?>> parameters, List<Boolean> forceConstRef) {
             if (indentOpening) writeIndent();
             out.append("{\n");
             indent++;
             if (parameters != null) {
-                for (CtParameter<?> p : parameters) {
-                    String parameterType = type(p.getType());
-                    if (isPassByReferenceType(parameterType)) {
+                for (int i = 0; i < parameters.size(); i++) {
+                    CtParameter<?> p = parameters.get(i);
+                    String parameterType = (p.getType() instanceof CtTypeParameterReference && isVariableComparedToNull(p, block))
+                            ? "typename Nullable<" + type(p.getType()) + ">::type"
+                            : ((isBoxedPrimitive(p.getType()) && isVariableComparedToNull(p, block))
+                            ? "JOptionalVal<" + type(p.getType()) + ">"
+                            : type(p.getType()));
+                    boolean isCaptured = isParameterReferencedInLocalType(p);
+                    boolean byRef = isPassByReferenceType(parameterType) || (forceConstRef != null && i < forceConstRef.size() && Boolean.TRUE.equals(forceConstRef.get(i)));
+                    if (isCaptured) {
                         writeIndent();
-                        out.append("auto& ").append(id(p.getSimpleName())).append(" = const_cast<").append(parameterType)
-                           .append("&>(").append(id(p.getSimpleName())).append("_const);\n");
+                        out.append("static ").append(parameterType).append(" ").append(id(p.getSimpleName())).append(";\n");
+                        writeIndent();
+                        String rhs = byRef ? id(p.getSimpleName()) + "_const" : id(p.getSimpleName()) + "_param";
+                        out.append(id(p.getSimpleName())).append(" = ").append(rhs).append(";\n");
+                    } else if (byRef) {
+                        writeIndent();
+                        boolean isReassigned = isParameterReassigned(p, block);
+                        boolean isEscaping = isParameterReferencedInEscapingLambda(p);
+                        if (isReassigned || isEscaping || parameterType.startsWith("shared_ptr<")) {
+                            out.append(parameterType).append(" ").append(id(p.getSimpleName()))
+                               .append(" = ").append(id(p.getSimpleName())).append("_const;\n");
+                        } else {
+                            out.append("auto& ").append(id(p.getSimpleName())).append(" = const_cast<").append(parameterType)
+                               .append("&>(").append(id(p.getSimpleName())).append("_const);\n");
+                        }
                     }
                 }
             }
-            if (block != null) {
+            if (parameters != null && block != null) {
+                Set<String> declaredNames = new HashSet<>();
+                for (CtParameter<?> p : parameters) declaredNames.add(id(p.getSimpleName()));
                 List<CtLocalVariable<?>> patternVars = findPatternVariables(block);
+                // 同名・異型のパターン変数には連番サフィックスを付けてリネームする
+                java.util.Map<String, List<CtLocalVariable<?>>> byName = new java.util.LinkedHashMap<>();
                 for (CtLocalVariable<?> v : patternVars) {
-                    if (!isVariableAlreadyDeclaredInBlock(v)) {
-                        writeIndent();
-                        out.append(type(v.getType())).append(' ').append(id(v.getSimpleName())).append("{};\n");
+                    byName.computeIfAbsent(id(v.getSimpleName()), k -> new java.util.ArrayList<>()).add(v);
+                }
+                for (var entry : byName.entrySet()) {
+                    String baseName = entry.getKey();
+                    List<CtLocalVariable<?>> vars = entry.getValue();
+                    boolean needRename = vars.stream().map(v -> type(v.getType())).distinct().count() > 1;
+                    // needRename の場合: 出現順に baseName__0, baseName__1, ... と連番を振る
+                    // 同じ型が複数ある場合でも同じ変数を共用（同じcppNameで宣言済みならスキップ）
+                    java.util.Map<String, String> typeToCppName = new java.util.LinkedHashMap<>();
+                    for (CtLocalVariable<?> v : vars) {
+                        String typeStr = type(v.getType());
+                        String cppName;
+                        if (needRename) {
+                            cppName = typeToCppName.computeIfAbsent(typeStr, t -> baseName + "__" + (typeToCppName.size()));
+                        } else {
+                            cppName = baseName;
+                        }
+                        patternVarRenames.put(v, cppName);
+                        patternVarRefRenames.put(v.getReference(), cppName);
+                        if (declaredNames.add(cppName)) {
+                            writeIndent();
+                            out.append(typeStr).append(' ').append(cppName).append("{};\n");
+                        }
                     }
                 }
+            }
+            boolean hasLoopLabel = block.getParent() instanceof CtLoop loop && loop.getLabel() != null
+                    && !(loop instanceof CtWhile);
+            if (hasLoopLabel) {
+                writeIndent();
+                out.append("{\n");
+                indent++;
             }
             for (CtStatement statement : block.getStatements()) emitStatement(statement);
+            if (hasLoopLabel) {
+                indent--;
+                writeIndent();
+                out.append("}\n");
+                CtLoop loop = (CtLoop) block.getParent();
+                line("__continue_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+            }
             indent--;
             writeIndent();
             out.append('}');
@@ -895,15 +1591,17 @@ public final class JavaToCpp {
                 emitBlock(block, true);
                 out.append('\n');
             } else if (s instanceof CtLocalVariable<?> v) {
-                CtMethod<?> parentMethod = v.getParent(CtMethod.class);
+                CtExecutable<?> parentExec = v.getParent(CtExecutable.class);
                 boolean isReferencedInLocalType = false;
-                if (parentMethod != null) {
-                    for (CtType<?> localType : parentMethod.getElements(new TypeFilter<>(CtType.class))) {
-                        boolean matches = localType.getElements(new TypeFilter<>(CtVariableAccess.class)).stream()
-                                .anyMatch(va -> va.getVariable() != null && va.getVariable().getSimpleName().equals(v.getSimpleName()));
-                        if (matches) {
-                            isReferencedInLocalType = true;
-                            break;
+                if (parentExec != null) {
+                    for (CtType<?> localType : parentExec.getElements(new TypeFilter<>(CtType.class))) {
+                        if (localType.isLocalType() || localType.isAnonymous()) {
+                            boolean matches = localType.getElements(new TypeFilter<>(CtVariableAccess.class)).stream()
+                                    .anyMatch(va -> va.getVariable() != null && (v.equals(va.getVariable().getDeclaration()) || v.getReference().equals(va.getVariable())));
+                            if (matches) {
+                                isReferencedInLocalType = true;
+                                break;
+                            }
                         }
                     }
                 }
@@ -913,7 +1611,28 @@ public final class JavaToCpp {
                         line(id(v.getSimpleName()) + " = " + initializer(v.getType(), v.getDefaultExpression()) + ";");
                     }
                 } else {
-                    String varType = (v.getType() != null && (v.getType().isAnonymous() || v.isInferred() || v.getType().getSimpleName().contains("$"))) ? "auto" : type(v.getType());
+                    CtBlock<?> parentBlock = v.getParent(CtBlock.class);
+                    boolean isArrayRef = v.getType() instanceof spoon.reflect.reference.CtArrayTypeReference
+                            && (v.getDefaultExpression() instanceof CtArrayRead
+                                    || (v.getDefaultExpression() instanceof CtInvocation<?> inv && switch (inv.getExecutable().getSimpleName()) {
+                                        case "peek", "peekFirst", "peekLast", "element" -> true;
+                                        default -> false;
+                                    }))
+                            && parentBlock != null
+                            && isArrayElementModified(v, parentBlock)
+                            && !isVariableReassigned(v, parentBlock);
+                    String varType;
+                    if (isArrayRef) {
+                        varType = "auto&";
+                    } else if (v.getType() != null && (v.getType().isAnonymous() || v.isInferred() || v.getType().getSimpleName().contains("$"))) {
+                        varType = "auto";
+                    } else if (v.getType() instanceof CtTypeParameterReference && isVariableComparedToNull(v, v.getParent(CtBlock.class))) {
+                        varType = "typename Nullable<" + type(v.getType()) + ">::type";
+                    } else if (isBoxedPrimitive(v.getType()) && isVariableComparedToNull(v, v.getParent(CtBlock.class))) {
+                        varType = "JOptionalVal<" + type(v.getType()) + ">";
+                    } else {
+                        varType = type(v.getType());
+                    }
                     line(varType + " " + id(v.getSimpleName())
                             + (v.getDefaultExpression() == null ? "" : " = " + initializer(v.getType(), v.getDefaultExpression())) + ";");
                 }
@@ -921,11 +1640,25 @@ public final class JavaToCpp {
                 line("assert(" + expr(ass.getAssertExpression()) + ");");
             } else if (s instanceof CtIf branch) {
                 writeIndent();
+                // パターンマッチング変数を if ブランチスコープに登録
+                java.util.Map<String, String> ifScope = new java.util.LinkedHashMap<>();
+                for (spoon.reflect.code.CtTypePattern pattern : branch.getCondition().getElements(new TypeFilter<>(spoon.reflect.code.CtTypePattern.class))) {
+                    CtLocalVariable<?> pv = pattern.getVariable();
+                    if (pv != null) {
+                        String cppName = patternVarRenames.getOrDefault(pv,
+                                patternVarRefRenames.getOrDefault(pv.getReference(), id(pv.getSimpleName())));
+                        ifScope.put(id(pv.getSimpleName()), cppName);
+                    }
+                }
+                patternVarScopeStack.push(ifScope);
                 out.append("if (").append(expr(branch.getCondition())).append(") ");
                 emitControlled(branch.getThenStatement());
+                patternVarScopeStack.pop();
                 if (branch.getElseStatement() != null) {
                     out.append(" else ");
+                    patternVarScopeStack.push(new java.util.LinkedHashMap<>());
                     emitControlled(branch.getElseStatement());
+                    patternVarScopeStack.pop();
                 }
                 out.append('\n');
             } else if (s instanceof CtFor loop) {
@@ -950,35 +1683,75 @@ public final class JavaToCpp {
                 out.append(") ");
                 emitControlled(loop.getBody());
                 out.append('\n');
+                if (loop.getLabel() != null) {
+                    line("__break_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+                }
             } else if (s instanceof CtForEach loop) {
                 writeIndent();
                 String iterable = expr(loop.getExpression());
                 if (loop.getExpression().getType() != null && isDeclaredType(loop.getExpression().getType())) {
-                    iterable = "*(" + iterable + ")";
+                    if (!(loop.getExpression() instanceof CtVariableAccess<?>)) {
+                        String tmpVar = "__iter_" + (++iterCounter);
+                        out.append("auto ").append(tmpVar).append(" = ").append(iterable).append(";\n");
+                        writeIndent();
+                        iterable = "*(" + tmpVar + ")";
+                    } else {
+                        iterable = "*(" + iterable + ")";
+                    }
                 }
-                out.append("for (").append(type(loop.getVariable().getType())).append(' ')
+                String loopVarType = (loop.getVariable().isInferred() || loop.getVariable().getType() == null || loop.getVariable().getType().isAnonymous())
+                        ? "auto" : type(loop.getVariable().getType());
+                out.append("for (").append(loopVarType).append(' ')
                         .append(id(loop.getVariable().getSimpleName())).append(" : ").append(iterable).append(") ");
                 emitControlled(loop.getBody());
                 out.append('\n');
+                if (loop.getLabel() != null) {
+                    line("__break_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+                }
             } else if (s instanceof CtWhile loop) {
+                if (loop.getLabel() != null) {
+                    line("__continue_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+                }
                 writeIndent();
                 out.append("while (").append(expr(loop.getLoopingExpression())).append(") ");
                 emitControlled(loop.getBody());
                 out.append('\n');
+                if (loop.getLabel() != null) {
+                    line("__break_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+                }
             } else if (s instanceof CtDo loop) {
                 writeIndent();
                 out.append("do ");
                 emitControlled(loop.getBody());
                 out.append(" while (").append(expr(loop.getLoopingExpression())).append(");\n");
+                if (loop.getLabel() != null) {
+                    line("__break_" + id(loop.getLabel()) + loopLabelSuffix(loop) + ":;");
+                }
             } else if (s instanceof CtReturn<?> ret) {
+                CtLambda<?> lambda = ret.getParent(CtLambda.class);
                 CtMethod<?> method = ret.getParent(CtMethod.class);
-                line("return" + (ret.getReturnedExpression() == null ? "" : " "
-                        + initializer(method == null ? ret.getReturnedExpression().getType() : method.getType(),
-                        ret.getReturnedExpression())) + ";");
-            } else if (s instanceof CtBreak) {
-                line("break;");
-            } else if (s instanceof CtContinue) {
-                line("continue;");
+                boolean insideLambda = lambda != null && (method == null || lambda.hasParent(method));
+                CtTypeReference<?> retExpectedType = insideLambda
+                        ? (ret.getReturnedExpression() != null ? ret.getReturnedExpression().getType() : null)
+                        : (method == null ? (ret.getReturnedExpression() != null ? ret.getReturnedExpression().getType() : null) : method.getType());
+                if (ret.getReturnedExpression() instanceof CtLiteral<?> lit && lit.getValue() == null && !insideLambda && method != null && isBoxedPrimitive(method.getType())) {
+                    line("return nullptr;");
+                } else {
+                    line("return" + (ret.getReturnedExpression() == null ? "" : " "
+                            + initializer(retExpectedType, ret.getReturnedExpression())) + ";");
+                }
+            } else if (s instanceof CtBreak b) {
+                if (b.getTargetLabel() != null) {
+                    line("goto __break_" + id(b.getTargetLabel()) + loopLabelSuffix(b.getLabelledStatement()) + ";");
+                } else {
+                    line("break;");
+                }
+            } else if (s instanceof CtContinue c) {
+                if (c.getTargetLabel() != null) {
+                    line("goto __continue_" + id(c.getTargetLabel()) + loopLabelSuffix(c.getLabelledStatement()) + ";");
+                } else {
+                    line("continue;");
+                }
             } else if (s instanceof CtInvocation<?> invocation) {
                 if (!invocation.getExecutable().getSimpleName().equals("<init>")) line(expr(invocation) + ";");
             } else if (s instanceof CtAssignment<?, ?> assignment) {
@@ -1026,21 +1799,67 @@ public final class JavaToCpp {
         /** switch 文 s を出力する。計算量: O(|s|)。 */
         // 未テスト
         private void emitSwitch(CtSwitch<?> s) {
-            writeIndent();
-            out.append("switch (").append(expr(s.getSelector())).append(") {\n");
-            indent++;
-            for (CtCase<?> c : s.getCases()) {
-                writeIndent();
-                if (c.getCaseExpressions().isEmpty()) out.append("default:\n");
-                else for (CtExpression<?> label : c.getCaseExpressions()) {
-                    out.append("case ").append(expr(label)).append(":\n");
+            boolean isEnum = s.getSelector().getType() != null
+                    && s.getSelector().getType().getTypeDeclaration() instanceof spoon.reflect.declaration.CtEnum<?>;
+            if (isEnum) {
+                String selExpr = expr(s.getSelector());
+                boolean first = true;
+                CtCase<?> defaultCase = null;
+                for (CtCase<?> c : s.getCases()) {
+                    if (c.getCaseExpressions().isEmpty()) {
+                        defaultCase = c;
+                        continue;
+                    }
+                    writeIndent();
+                    if (!first) out.append("else ");
+                    first = false;
+                    out.append("if (");
+                    List<String> conds = new java.util.ArrayList<>();
+                    for (CtExpression<?> label : c.getCaseExpressions()) {
+                        conds.add(selExpr + " == " + expr(label));
+                    }
+                    out.append(String.join(" || ", conds)).append(") {\n");
+                    indent++;
+                    for (CtStatement statement : c.getStatements()) {
+                        if (!(statement instanceof spoon.reflect.code.CtBreak)) {
+                            emitStatement(statement);
+                        }
+                    }
+                    indent--;
+                    writeIndent();
+                    out.append("}\n");
                 }
+                if (defaultCase != null) {
+                    writeIndent();
+                    if (!first) out.append("else {\n");
+                    else out.append("{\n");
+                    indent++;
+                    for (CtStatement statement : defaultCase.getStatements()) {
+                        if (!(statement instanceof spoon.reflect.code.CtBreak)) {
+                            emitStatement(statement);
+                        }
+                    }
+                    indent--;
+                    writeIndent();
+                    out.append("}\n");
+                }
+            } else {
+                writeIndent();
+                out.append("switch (").append(expr(s.getSelector())).append(") {\n");
                 indent++;
-                for (CtStatement statement : c.getStatements()) emitStatement(statement);
+                for (CtCase<?> c : s.getCases()) {
+                    writeIndent();
+                    if (c.getCaseExpressions().isEmpty()) out.append("default:\n");
+                    else for (CtExpression<?> label : c.getCaseExpressions()) {
+                        out.append("case ").append(expr(label)).append(":\n");
+                    }
+                    indent++;
+                    for (CtStatement statement : c.getStatements()) emitStatement(statement);
+                    indent--;
+                }
                 indent--;
+                line("}");
             }
-            indent--;
-            line("}");
         }
 
         /** try 文 t を出力する。計算量: O(|t|)。 */
@@ -1133,18 +1952,38 @@ public final class JavaToCpp {
                         return "dynamic_pointer_cast<" + innerType + ">(" + expr(copy) + ")";
                     }
                 }
+                if (copy.getType() instanceof CtTypeParameterReference || cast instanceof CtTypeParameterReference) {
+                    return "jcast<" + castType + ">(" + expr(copy) + ")";
+                }
                 return "static_cast<" + castType + ">(" + expr(copy) + ")";
             }
             if (e instanceof CtLiteral<?> literal) return literal(literal);
             if (e instanceof CtFieldAccess<?> field) return field(field);
             if (e instanceof CtThisAccess<?> thisAccess) {
-                CtTypeReference<?> targetType = thisAccess.getType() != null ? thisAccess.getType() : (currentType != null ? currentType.getReference() : null);
+                CtTypeReference<?> expectedType = thisAccess.getParent() instanceof CtReturn<?> ret && ret.getParent(CtMethod.class) != null
+                        ? ret.getParent(CtMethod.class).getType() : null;
+                CtTypeReference<?> targetType = (expectedType != null && !expectedType.isAnonymous())
+                        ? expectedType
+                        : (thisAccess.getType() != null ? thisAccess.getType() : (currentType != null ? currentType.getReference() : null));
+                boolean inConstructor = thisAccess.getParent(CtConstructor.class) != null;
                 if (targetType != null) {
                     String tStr = type(targetType);
                     if (tStr.startsWith("shared_ptr<") && tStr.endsWith(">")) {
                         tStr = tStr.substring("shared_ptr<".length(), tStr.length() - 1);
                     }
+                    if (inConstructor) {
+                        return "shared_ptr<" + tStr + ">(this, [](auto*){})";
+                    }
+                    if (currentType != null && !simpleName(currentType.getSimpleName()).equals(simpleName(targetType.getSimpleName()))) {
+                        String outer = outerTarget(targetType);
+                        if (outer != null && !outer.isEmpty()) {
+                            return "static_pointer_cast<" + tStr + ">(" + outer + "->shared_from_this())";
+                        }
+                    }
                     return "static_pointer_cast<" + tStr + ">(this->shared_from_this())";
+                }
+                if (inConstructor) {
+                    return "shared_ptr<void>(this, [](auto*){})";
                 }
                 return "this->shared_from_this()";
             }
@@ -1152,8 +1991,29 @@ public final class JavaToCpp {
             if (e instanceof CtVariableAccess<?> variable) {
                 if (variable.getVariable() instanceof CtFieldReference<?> field) return fieldName(field);
                 String name = id(variable.getVariable().getSimpleName());
-                if (currentInitializerListParameters != null) {
-                    for (CtParameter<?> p : currentInitializerListParameters) {
+                // パターンマッチング変数のリネームを適用（if スコープスタックを優先）
+                {
+                    String simpleName = id(variable.getVariable().getSimpleName());
+                    String renamed = null;
+                    // 現在の if スコープスタックから検索（内側から順に）
+                    for (var scope : patternVarScopeStack) {
+                        if (scope.containsKey(simpleName)) {
+                            renamed = scope.get(simpleName);
+                            break;
+                        }
+                    }
+                    if (renamed == null) {
+                        renamed = patternVarRefRenames.get(variable.getVariable());
+                    }
+                    if (renamed == null) {
+                        try {
+                            var decl = variable.getVariable().getDeclaration();
+                            if (decl instanceof CtLocalVariable<?> lv) renamed = patternVarRenames.get(lv);
+                        } catch (Exception ignored) {}
+                    }
+                    if (renamed != null) name = renamed;
+                }
+                if (currentInitializerListParameters != null) {                    for (CtParameter<?> p : currentInitializerListParameters) {
                         if (p.getSimpleName().equals(variable.getVariable().getSimpleName())) {
                             if (isPassByReferenceType(type(p.getType()))) {
                                 return name + "_const";
@@ -1166,6 +2026,27 @@ public final class JavaToCpp {
             if (e instanceof CtTypeAccess<?> access) return typeAccess(access.getAccessedType());
             if (e instanceof CtArrayAccess<?, ?> access) return expr(access.getTarget()) + "[" + expr(access.getIndexExpression()) + "]";
             if (e instanceof CtOperatorAssignment<?, ?> assignment) {
+                if (assignment.getAssigned() instanceof CtArrayAccess<?, ?> arrayAccess
+                        && (hasSideEffects(arrayAccess.getTarget()) || hasSideEffects(arrayAccess.getIndexExpression()))
+                        && hasSideEffects(assignment.getAssignment())) {
+                    String arr = expr(arrayAccess.getTarget());
+                    String idx = expr(arrayAccess.getIndexExpression());
+                    String op = binarySymbol(assignment.getKind());
+                    String val = expr(assignment.getAssignment());
+                    if (assignment.getAssigned().getType() != null
+                            && assignment.getAssigned().getType().getQualifiedName().equals("boolean")
+                            && (assignment.getKind() == spoon.reflect.code.BinaryOperatorKind.BITOR
+                            || assignment.getKind() == spoon.reflect.code.BinaryOperatorKind.BITAND)) {
+                        return "([&]() -> auto& { auto& __arr = " + arr + "; auto __idx = " + idx
+                                + "; return (__arr[__idx] = (__arr[__idx] " + op + " " + val + ")); }())";
+                    }
+                    if (assignment.getKind() == spoon.reflect.code.BinaryOperatorKind.USR) {
+                        return "([&]() -> auto& { auto& __arr = " + arr + "; auto __idx = " + idx
+                                + "; return (__arr[__idx] = jusr(__arr[__idx], " + val + ")); }())";
+                    }
+                    return "([&]() -> auto& { auto& __arr = " + arr + "; auto __idx = " + idx
+                            + "; return (__arr[__idx] " + op + "= " + val + "); }())";
+                }
                 if (assignment.getAssigned().getType() != null
                         && assignment.getAssigned().getType().getQualifiedName().equals("boolean")
                         && (assignment.getKind() == spoon.reflect.code.BinaryOperatorKind.BITOR
@@ -1174,10 +2055,23 @@ public final class JavaToCpp {
                     return "(" + assigned + " = (" + assigned + " " + binarySymbol(assignment.getKind()) + " "
                             + expr(assignment.getAssignment()) + "))";
                 }
+                if (assignment.getKind() == spoon.reflect.code.BinaryOperatorKind.USR) {
+                    String assigned = expr(assignment.getAssigned());
+                    return "(" + assigned + " = jusr(" + assigned + ", " + expr(assignment.getAssignment()) + "))";
+                }
                 return "(" + expr(assignment.getAssigned()) + " " + binarySymbol(assignment.getKind()) + "= "
                         + expr(assignment.getAssignment()) + ")";
             }
             if (e instanceof CtAssignment<?, ?> assignment) {
+                if (assignment.getAssigned() instanceof CtArrayAccess<?, ?> arrayAccess
+                        && (hasSideEffects(arrayAccess.getTarget()) || hasSideEffects(arrayAccess.getIndexExpression()))
+                        && hasSideEffects(assignment.getAssignment())) {
+                    String arr = expr(arrayAccess.getTarget());
+                    String idx = expr(arrayAccess.getIndexExpression());
+                    String val = initializer(assignment.getAssigned().getType(), assignment.getAssignment());
+                    return "([&]() -> auto& { auto& __arr = " + arr + "; auto __idx = " + idx
+                            + "; return (__arr[__idx] = " + val + "); }())";
+                }
                 return "(" + expr(assignment.getAssigned()) + " = "
                         + initializer(assignment.getAssigned().getType(), assignment.getAssignment()) + ")";
             }
@@ -1211,7 +2105,9 @@ public final class JavaToCpp {
                     if (rhs instanceof spoon.reflect.code.CtTypePattern pattern) {
                         CtLocalVariable<?> v = pattern.getVariable();
                         if (v != null && pattern.getParent(CtIf.class) != null) {
-                            return "jisInstance(" + expr(binary.getLeftHandOperand()) + ", " + id(v.getSimpleName()) + ")";
+                            String cppVarName = patternVarRenames.getOrDefault(v,
+                                    patternVarRefRenames.getOrDefault(v.getReference(), id(v.getSimpleName())));
+                            return "jisInstance(" + expr(binary.getLeftHandOperand()) + ", " + cppVarName + ")";
                         }
                         return "jisInstance<" + type(pattern.getType()) + ">(" + expr(binary.getLeftHandOperand()) + ")";
                     }
@@ -1224,6 +2120,19 @@ public final class JavaToCpp {
                 if (binary.getKind() == spoon.reflect.code.BinaryOperatorKind.PLUS && binary.getType() != null
                         && binary.getType().getQualifiedName().equals("java.lang.String")) {
                     return "jconcat(" + expr(binary.getLeftHandOperand()) + ", " + expr(binary.getRightHandOperand()) + ")";
+                }
+                if (binary.getKind() == spoon.reflect.code.BinaryOperatorKind.USR) {
+                    return "jusr(" + expr(binary.getLeftHandOperand()) + ", " + expr(binary.getRightHandOperand()) + ")";
+                }
+                // Java の int << n は n を mod 32 するが C++ の int << n (n>=32) は UB。
+                // 左辺が int 型かつ SL/SR のとき、左辺を (unsigned int) へキャストして安全にする。
+                if ((binary.getKind() == spoon.reflect.code.BinaryOperatorKind.SL
+                        || binary.getKind() == spoon.reflect.code.BinaryOperatorKind.SR)
+                        && binary.getLeftHandOperand().getType() != null
+                        && binary.getLeftHandOperand().getType().getQualifiedName().equals("int")) {
+                    String op = binary.getKind() == spoon.reflect.code.BinaryOperatorKind.SL ? "<<" : ">>";
+                    return "(int)((unsigned int)(" + expr(binary.getLeftHandOperand()) + ") " + op + " "
+                            + expr(binary.getRightHandOperand()) + ")";
                 }
                 return "(" + expr(binary.getLeftHandOperand()) + " " + binarySymbol(binary.getKind()) + " "
                         + expr(binary.getRightHandOperand()) + ")";
@@ -1241,6 +2150,21 @@ public final class JavaToCpp {
                     String thenStr = thenIsString ? expr(thenE) : "jstr(" + expr(thenE) + ")";
                     String elseStr = elseIsString ? expr(elseE) : "jstr(" + expr(elseE) + ")";
                     return "(" + expr(conditional.getCondition()) + " ? " + thenStr + " : " + elseStr + ")";
+                }
+                String fnType = functionalType(conditional.getType());
+                if (fnType != null) {
+                    String thenStr = isNullLiteral(thenE) ? "nullptr" : fnType + "(" + expr(thenE) + ")";
+                    String elseStr = isNullLiteral(elseE) ? "nullptr" : fnType + "(" + expr(elseE) + ")";
+                    return "(" + expr(conditional.getCondition()) + " ? " + thenStr + " : " + elseStr + ")";
+                }
+                // null チェックを含む三項演算子で boxed primitive が JOptionalVal<T> に昇格した場合、
+                // 両ブランチの型を統一するため、非 null ブランチを JOptionalVal に wrap する。
+                // 例: (ans == null ? -1 : ans) → JOptionalVal<long long> vs int の不一致を解消。
+                if (conditional.getType() != null && isBoxedPrimitive(conditional.getType())) {
+                    String optType = "JOptionalVal<" + type(conditional.getType()) + ">";
+                    String thenOut = isNullLiteral(thenE) ? optType + "{}" : optType + "(" + expr(thenE) + ")";
+                    String elseOut = isNullLiteral(elseE) ? optType + "{}" : optType + "(" + expr(elseE) + ")";
+                    return "(" + expr(conditional.getCondition()) + " ? " + thenOut + " : " + elseOut + ")";
                 }
                 return "(" + expr(conditional.getCondition()) + " ? "
                         + initializer(conditional.getType(), thenE)
@@ -1295,13 +2219,16 @@ public final class JavaToCpp {
                 String targetName = access.getAccessedType().getQualifiedName();
                 if (targetName.equals("java.lang.System")) {
                     if (name.equals("in")) return "JInputStream()";
-                    if (name.equals("out") || name.equals("err")) return "JPrintWriter()";
+                    if (name.equals("out")) return "JPrintWriter()";
+                    if (name.equals("err")) return "JPrintWriter(true)";
                 }
                 if (name.equals("class")) {
                     return "JClass(typeid(" + type(access.getAccessedType()) + "))";
                 }
             }
-            if (name.equals("length") && f.getTarget() != null) {
+            boolean isArrayLength = (f.getTarget() != null && f.getTarget().getType() instanceof CtArrayTypeReference<?>)
+                    || (f.getVariable().getDeclaringType() instanceof CtArrayTypeReference<?>);
+            if (name.equals("length") && f.getTarget() != null && isArrayLength) {
                 return "static_cast<int>(" + expr(f.getTarget()) + ".size())";
             }
             CtField<?> declaration = f.getVariable().getDeclaration();
@@ -1310,13 +2237,14 @@ public final class JavaToCpp {
                     return id(declaration.getDeclaringType().getSimpleName()) + "::" + fieldName(f.getVariable());
                 }
             }
-            if (declaration != null && currentType != null && currentType.getDeclaringType() != null
-                    && declaration.getDeclaringType() == currentType.getDeclaringType()
-                    && declaration.getDeclaringType() != currentType) {
+            if ((f.getTarget() == null || f.getTarget() instanceof CtThisAccess<?>)
+                    && declaration != null && currentType != null
+                    && isEnclosingType(declaration.getDeclaringType(), currentType)) {
                 if (declaration.hasModifier(ModifierKind.STATIC) || currentStaticContext || currentType.hasModifier(ModifierKind.STATIC)) {
                     return id(declaration.getDeclaringType().getSimpleName()) + "::" + fieldName(f.getVariable());
                 }
-                return "outer->" + fieldName(f.getVariable());
+                String outer = outerTarget(declaration.getDeclaringType().getReference());
+                return outer + "->" + fieldName(f.getVariable());
             }
             if (f.getTarget() == null) return fieldName(f.getVariable());
             if (f.getTarget() instanceof CtThisAccess<?>) {
@@ -1370,6 +2298,17 @@ public final class JavaToCpp {
             return false;
         }
 
+        private boolean isSystemErrTarget(CtInvocation<?> inv) {
+            if (inv == null || inv.getTarget() == null) return false;
+            if (inv.getTarget() instanceof CtFieldAccess<?> fa) {
+                return fa.getVariable() != null &&
+                        "err".equals(fa.getVariable().getSimpleName()) &&
+                        fa.getVariable().getDeclaringType() != null &&
+                        "java.lang.System".equals(fa.getVariable().getDeclaringType().getQualifiedName());
+            }
+            return false;
+        }
+
         /** 呼出し i を返す。計算量: O(|i|)。 */
         // 未テスト
         private String invocation(CtInvocation<?> i) {
@@ -1381,17 +2320,49 @@ public final class JavaToCpp {
                 return "__self(__self" + (i.getArguments().isEmpty() ? ")" : ", " + arguments(i.getArguments()).substring(1));
             }
             if (i.getTarget() instanceof CtSuperAccess<?> && i.getExecutable().getDeclaringType() != null) {
-                String declType = rawCustomType(i.getExecutable().getDeclaringType());
-                if (!declType.contains("<") && currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
-                    declType += templateArgs(currentType.getFormalCtTypeParameters());
+                CtTypeReference<?> declRef = i.getExecutable().getDeclaringType();
+                if (currentType instanceof CtClass<?> cls && cls.getSuperclass() != null) {
+                    CtTypeReference<?> superRef = cls.getSuperclass();
+                    String superRaw = rawCustomType(superRef);
+                    if (superRaw.startsWith("JSet") || superRaw.startsWith("JList") || superRaw.startsWith("JMap") || superRaw.startsWith("JDeque") || superRaw.startsWith("JStack")) {
+                        declRef = superRef;
+                    }
+                }
+                String declType = rawCustomType(declRef);
+                if (!declType.contains("<")) {
+                    if (currentType instanceof CtClass<?> cls && cls.getSuperclass() != null && !cls.getSuperclass().getActualTypeArguments().isEmpty()) {
+                        StringBuilder sb = new StringBuilder(declType).append("<");
+                        List<CtTypeReference<?>> sArgs = cls.getSuperclass().getActualTypeArguments();
+                        for (int k = 0; k < sArgs.size(); k++) {
+                            if (k > 0) sb.append(", ");
+                            sb.append(type(sArgs.get(k)));
+                        }
+                        declType = sb.append(">").toString();
+                    } else if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                        declType += templateArgs(currentType.getFormalCtTypeParameters());
+                    }
                 }
                 return declType + "::" + id(name) + arguments(i.getArguments());
             }
-            if ((qualified.equals("java.util.List") || simpleTargetName(i.getTarget()).equals("List")) && name.equals("of")) {
-                return "jlistOf" + arguments(i.getArguments());
+            if ((qualified.equals("java.util.List") || simpleTargetName(i.getTarget()).equals("List")) && (name.equals("of") || name.equals("copyOf"))) {
+                return (name.equals("of") ? "jlistOf" : "JList") + arguments(i.getArguments());
             }
-            if ((qualified.equals("java.util.Set") || simpleTargetName(i.getTarget()).equals("Set")) && name.equals("of")) {
-                return "jsetOf" + arguments(i.getArguments());
+            if ((qualified.equals("java.util.Set") || simpleTargetName(i.getTarget()).equals("Set")) && (name.equals("of") || name.equals("copyOf"))) {
+                return (name.equals("of") ? "jsetOf" : "JSet") + arguments(i.getArguments());
+            }
+            if ((qualified.equals("java.util.Map") || simpleTargetName(i.getTarget()).equals("Map")) && (name.equals("copyOf"))) {
+                return "JMap" + arguments(i.getArguments());
+            }
+            if (isSystemErrTarget(i)) {
+                if (name.equals("println") || name.equals("print")) {
+                    return (name.equals("println") ? "jeprintln" : "jeprint") + arguments(i.getArguments());
+                }
+                if (name.equals("printf") || name.equals("format")) {
+                    return "jeprintf" + arguments(i.getArguments());
+                }
+                if (name.equals("flush")) {
+                    return "cerr.flush()";
+                }
             }
             if ((qualified.equals("java.lang.System") || qualified.equals("java.io.PrintStream"))
                     && (name.equals("println") || name.equals("print"))) {
@@ -1447,6 +2418,10 @@ public final class JavaToCpp {
                 return "jformat" + arguments(i.getArguments());
             }
             if (qualified.equals("java.lang.String") && name.equals("valueOf")) {
+                if (i.getArguments().size() == 3) {
+                    return "JString(" + expr(i.getArguments().get(0)) + ".begin() + " + expr(i.getArguments().get(1)) + ", "
+                            + expr(i.getArguments().get(0)) + ".begin() + " + expr(i.getArguments().get(1)) + " + " + expr(i.getArguments().get(2)) + ")";
+                }
                 return "jstr(" + expr(i.getArguments().get(0)) + ")";
             }
             if (qualified.equals("java.lang.String") && name.equals("repeat") && i.getTarget() != null) {
@@ -1526,6 +2501,10 @@ public final class JavaToCpp {
             if (name.startsWith("thenComparing") && i.getTarget() != null && !i.getArguments().isEmpty()) {
                 return "jcomparing(" + expr(i.getTarget()) + ")." + name + "(" + expr(i.getArguments().get(0)) + ")";
             }
+            if (name.equals("reversed") && i.getTarget() != null && i.getArguments().isEmpty()
+                    && (qualified.equals("java.util.Comparator") || simpleTargetName(i.getTarget()).equals("Comparator") || (i.getTarget().getType() != null && i.getTarget().getType().getQualifiedName().equals("java.util.Comparator")))) {
+                return "jreversed(" + expr(i.getTarget()) + ")";
+            }
             if (name.equals("compare") && i.getTarget() != null && i.getArguments().size() == 2) {
                 if (i.getTarget() instanceof CtTypeAccess<?>) {
                     return expr(i.getTarget()) + "::" + id(name) + arguments(i.getArguments());
@@ -1564,7 +2543,8 @@ public final class JavaToCpp {
                     return "jlastIndexOf(" + expr(i.getTarget()) + ", " + expr(i.getArguments().get(0)) + ", " + expr(i.getArguments().get(1)) + ")";
                 }
             }
-            if (qualified.equals("java.lang.String") && name.equals("substring") && i.getTarget() != null) {
+            if ((qualified.equals("java.lang.String") || qualified.equals("java.lang.CharSequence") || isJavaString(i.getTarget() == null ? null : i.getTarget().getType()))
+                    && (name.equals("substring") || name.equals("subSequence")) && i.getTarget() != null) {
                 if (i.getArguments().size() == 1) {
                     return "jsubstring(" + expr(i.getTarget()) + ", " + expr(i.getArguments().get(0)) + ")";
                 } else if (i.getArguments().size() == 2) {
@@ -1590,7 +2570,10 @@ public final class JavaToCpp {
                 }
                 if (targetType == null || targetType.isPrimitive()
                         || targetType instanceof CtTypeParameterReference
-                        || targetType.getQualifiedName().equals("java.lang.Object")) {
+                        || targetType.getQualifiedName().equals("java.lang.Object")
+                        || targetType.getQualifiedName().equals("java.util.Comparator")
+                        || functionalType(targetType) != null
+                        || targetType.getQualifiedName().startsWith("java.util.function.")) {
                     return "jequals(" + expr(i.getTarget()) + ", " + expr(i.getArguments().get(0)) + ")";
                 }
             }
@@ -1621,8 +2604,9 @@ public final class JavaToCpp {
                 return "jstr(" + expr(i.getTarget()) + ")";
             }
             if (qualified.equals("java.util.Map$Entry") && i.getTarget() != null) {
-                if (name.equals("getKey")) return expr(i.getTarget()) + ".first";
-                if (name.equals("getValue")) return expr(i.getTarget()) + ".second";
+                if (name.equals("getKey")) return "jentryKey(" + expr(i.getTarget()) + ")";
+                if (name.equals("getValue")) return "jentryValue(" + expr(i.getTarget()) + ")";
+                if (name.equals("setValue")) return "jentrySetValue(" + expr(i.getTarget()) + ", " + expr(i.getArguments().get(0)) + ")";
             }
             if (qualified.equals("java.lang.Thread") && name.equals("setDefaultUncaughtExceptionHandler")) return "jnoop()";
             if (qualified.equals("java.lang.Runtime") && name.equals("getRuntime")) return "JRuntime()";
@@ -1641,6 +2625,10 @@ public final class JavaToCpp {
                     target = id(currentType.getDeclaringType().getSimpleName());
                 } else {
                     target = "outer";
+                }
+            } else if (target.isEmpty() && !i.getExecutable().isStatic() && (i.getTarget() == null || i.getTarget() instanceof CtThisAccess<?>)) {
+                if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                    target = "this";
                 }
             }
             if (i.getTarget() instanceof CtTypeAccess<?> access && isDeclaredType(access.getAccessedType())
@@ -1675,8 +2663,25 @@ public final class JavaToCpp {
             String typeArgsStr = "";
             if (!typeArgs.isEmpty() && i.getExecutable().getDeclaration() instanceof CtMethod<?> method
                     && !method.getFormalCtTypeParameters().isEmpty()) {
-                boolean validArgs = typeArgs.stream().noneMatch(ta -> ta instanceof CtTypeParameterReference tpr
-                        && tpr.getDeclaration() != null && tpr.getDeclaration().getParent(CtMethod.class) != null);
+                CtMethod<?> enclosingMethod = i.getParent(CtMethod.class);
+                CtType<?> enclosingType = currentType != null ? currentType : i.getParent(CtType.class);
+                boolean validArgs = typeArgs.stream().allMatch(ta -> {
+                    if (ta instanceof CtTypeParameterReference tpr) {
+                        String pName = tpr.getSimpleName();
+                        boolean inMethod = enclosingMethod != null && enclosingMethod.getFormalCtTypeParameters().stream().anyMatch(tp -> tp.getSimpleName().equals(pName));
+                        boolean inType = false;
+                        CtType<?> t = enclosingType;
+                        while (t != null) {
+                            if (t.getFormalCtTypeParameters().stream().anyMatch(tp -> tp.getSimpleName().equals(pName))) {
+                                inType = true;
+                                break;
+                            }
+                            t = t.getDeclaringType();
+                        }
+                        return inMethod || inType;
+                    }
+                    return true;
+                });
                 if (validArgs) {
                     StringBuilder sb = new StringBuilder("<");
                     for (int idx = 0; idx < typeArgs.size(); idx++) {
@@ -1684,7 +2689,32 @@ public final class JavaToCpp {
                         sb.append(type(typeArgs.get(idx)));
                     }
                     sb.append(">");
-                    typeArgsStr = sb.toString();
+                    String candidate = sb.toString();
+                    if (!candidate.contains("Method")) {
+                        typeArgsStr = candidate;
+                    }
+                }
+            }
+            if (i.getTarget() != null && !(i.getTarget() instanceof CtThisAccess<?>) && !target.equals("this")) {
+                CtTypeReference<?> targetTypeRef = i.getTarget().getType();
+                if (i.getTarget() instanceof CtInvocation<?> targetInv && targetInv.getExecutable().getDeclaration() instanceof CtMethod<?> targetMethod) {
+                    CtTypeReference<?> baseReturn = getBaseMethodReturnType(targetMethod, targetMethod.getDeclaringType());
+                    if (baseReturn != null && isDeclaredType(baseReturn)) targetTypeRef = baseReturn;
+                }
+                CtTypeReference<?> declTypeRef = i.getExecutable().getDeclaringType();
+                if (targetTypeRef != null && declTypeRef != null && isDeclaredType(declTypeRef) && isDeclaredType(targetTypeRef)) {
+                    final CtType<?> targetDecl = targetTypeRef.getTypeDeclaration();
+                    final CtType<?> declDecl = declTypeRef.getTypeDeclaration();
+                    boolean isDowncast = targetDecl != null && declDecl != null && targetDecl != declDecl
+                            && collectAllSuperInterfaces(declDecl).stream()
+                            .anyMatch(ref -> ref.getTypeDeclaration() == targetDecl);
+                    if (isDowncast) {
+                        String declTypeStr = type(declTypeRef);
+                        if (declTypeStr.startsWith("shared_ptr<") && declTypeStr.endsWith(">")) {
+                            String innerType = declTypeStr.substring(11, declTypeStr.length() - 1);
+                            target = "dynamic_pointer_cast<" + innerType + ">(" + target + ")";
+                        }
+                    }
                 }
             }
             return (target.isEmpty() ? "" : target + separator) + id(name) + typeArgsStr + invocationArguments(i);
@@ -1716,11 +2746,50 @@ public final class JavaToCpp {
             }
 
             StringBuilder s = new StringBuilder("(");
+            boolean hasMultipleOverloads = false;
+            CtTypeReference<?> declRef = i.getExecutable().getDeclaringType();
+            if (declRef != null && isDeclaredType(declRef) && declRef.getTypeDeclaration() != null) {
+                String execName = i.getExecutable().getSimpleName();
+                int argCount = i.getArguments().size();
+                long matching = declRef.getTypeDeclaration().getMethods().stream()
+                        .filter(m -> m.getSimpleName().equals(execName) && m.getParameters().size() == argCount)
+                        .count();
+                hasMultipleOverloads = matching > 1;
+            }
+
             for (int j = 0; j < i.getArguments().size(); j++) {
                 if (j > 0) s.append(", ");
                 CtTypeReference<?> paramType = (method != null && j < method.getParameters().size())
                         ? method.getParameters().get(j).getType()
                         : (j < i.getExecutable().getParameters().size() ? i.getExecutable().getParameters().get(j) : null);
+                if (paramType != null && hasMultipleOverloads && paramType.isPrimitive()
+                        && i.getArguments().get(j).getType() != null && i.getArguments().get(j).getType().isPrimitive()) {
+                    String pTypeStr = type(paramType);
+                    String argTypeStr = type(i.getArguments().get(j).getType());
+                    if (!pTypeStr.equals(argTypeStr)) {
+                        s.append("static_cast<").append(pTypeStr).append(">(").append(expr(i.getArguments().get(j))).append(")");
+                        continue;
+                    }
+                }
+                if (paramType != null && (paramType.getQualifiedName().equals("java.lang.Object") || paramType instanceof CtTypeParameterReference)) {
+                    if (i.getTarget() != null && i.getTarget().getType() != null) {
+                        CtTypeReference<?> targetType = i.getTarget().getType();
+                        CtType<?> decl = targetType.getTypeDeclaration();
+                        if (decl != null && !targetType.getActualTypeArguments().isEmpty()) {
+                            java.util.Map<String, CtTypeReference<?>> map = new java.util.HashMap<>();
+                            for (int k = 0; k < Math.min(decl.getFormalCtTypeParameters().size(), targetType.getActualTypeArguments().size()); k++) {
+                                map.put(decl.getFormalCtTypeParameters().get(k).getSimpleName(), targetType.getActualTypeArguments().get(k));
+                            }
+                            for (CtMethod<?> m : decl.getMethods()) {
+                                if (m.getSimpleName().equals(i.getExecutable().getSimpleName()) && m.getParameters().size() == i.getArguments().size()) {
+                                    CtTypeReference<?> candType = m.getParameters().get(j).getType();
+                                    paramType = substituteTypeArguments(candType, map);
+                                    break;
+                                }
+                            }
+                        }
+                    }
+                }
                 s.append(paramType != null ? initializer(paramType, i.getArguments().get(j)) : argumentExpr(i.getArguments().get(j)));
             }
             return s.append(')').toString();
@@ -1734,10 +2803,11 @@ public final class JavaToCpp {
                 case "min", "max", "signum", "floorDiv", "ceilDiv", "floorMod", "clamp",
                         "addExact", "subtractExact", "multiplyExact", "toIntExact", "negateExact",
                         "incrementExact", "decrementExact", "multiplyFull", "multiplyHigh",
-                        "toRadians", "toDegrees" -> "j" + name;
-                case "abs", "sqrt", "cbrt", "pow", "floor", "ceil", "round", "log", "log10", "log2", "exp",
+                        "absExact", "toRadians", "toDegrees", "round" -> "j" + name;
+                case "copySign" -> "std::copysign";
+                case "abs", "sqrt", "cbrt", "pow", "floor", "ceil", "log", "log10", "log2", "exp",
                         "sin", "cos", "tan", "asin", "acos", "atan", "atan2", "hypot", "rint",
-                        "log1p", "expm1", "sinh", "cosh", "tanh", "nextAfter", "copySign", "scalb" -> "std::" + name;
+                        "log1p", "expm1", "sinh", "cosh", "tanh", "nextAfter", "scalb" -> "std::" + name;
                 default -> throw new IllegalArgumentException("Unsupported Math method: " + name);
             };
             return mapped + arguments(args);
@@ -1758,6 +2828,13 @@ public final class JavaToCpp {
                             .findFirst().orElse(null);
                 }
             }
+            java.util.Map<String, CtTypeReference<?>> typeArgMap = new java.util.HashMap<>();
+            if (c.getType() != null && !c.getType().getActualTypeArguments().isEmpty() && declaration != null && declaration.getDeclaringType() != null) {
+                CtType<?> declType = declaration.getDeclaringType();
+                for (int k = 0; k < Math.min(declType.getFormalCtTypeParameters().size(), c.getType().getActualTypeArguments().size()); k++) {
+                    typeArgMap.put(declType.getFormalCtTypeParameters().get(k).getSimpleName(), c.getType().getActualTypeArguments().get(k));
+                }
+            }
             boolean isVarArgCall = declaration != null && !declaration.getParameters().isEmpty()
                     && (declaration.getParameters().get(declaration.getParameters().size() - 1).isVarArgs()
                     || (declaration.getParameters().size() == 1 && declaration.getParameters().get(0).getType() instanceof CtArrayTypeReference<?> && c.getArguments().size() > 1));
@@ -1765,12 +2842,14 @@ public final class JavaToCpp {
                 List<CtParameter<?>> params = declaration != null ? declaration.getParameters() : null;
                 int fixed = params != null ? params.size() - 1 : Math.max(0, c.getExecutable().getParameters().size() - 1);
                 CtTypeReference<?> varArgType = params != null ? params.get(fixed).getType() : (!c.getExecutable().getParameters().isEmpty() ? c.getExecutable().getParameters().get(fixed) : null);
+                if (varArgType != null && !typeArgMap.isEmpty()) varArgType = substituteTypeArguments(varArgType, typeArgMap);
                 String elemType = varArgType instanceof CtArrayTypeReference<?> arrayRef
                         ? type(arrayRef.getComponentType()) : "int";
                 StringBuilder s = new StringBuilder("(");
                 for (int j = 0; j < fixed; j++) {
                     if (j > 0) s.append(", ");
                     CtTypeReference<?> paramType = params.get(j).getType();
+                    if (paramType != null && !typeArgMap.isEmpty()) paramType = substituteTypeArguments(paramType, typeArgMap);
                     s.append(initializer(paramType, c.getArguments().get(j)));
                 }
                 if (fixed > 0 && !c.getArguments().isEmpty()) s.append(", ");
@@ -1788,6 +2867,7 @@ public final class JavaToCpp {
             for (int j = 0; j < c.getArguments().size(); j++) {
                 if (j > 0) s.append(", ");
                 CtTypeReference<?> paramType = j < paramTypes.size() ? paramTypes.get(j) : null;
+                if (paramType != null && !typeArgMap.isEmpty()) paramType = substituteTypeArguments(paramType, typeArgMap);
                 s.append(paramType != null ? initializer(paramType, c.getArguments().get(j)) : argumentExpr(c.getArguments().get(j)));
             }
             return s.append(')').toString();
@@ -1860,8 +2940,17 @@ public final class JavaToCpp {
         private String constructor(CtConstructorCall<?> c) {
             String q = c.getType().getQualifiedName();
             String simple = simpleName(c.getType().getSimpleName());
-            if (q.equals("java.util.Scanner")) return "JScanner()";
-            if (q.equals("java.io.PrintWriter")) return "JPrintWriter()";
+            if (c instanceof CtNewClass<?> anonymous) {
+                if (q.equals("java.util.Comparator") || functionalType(c.getType()) != null || q.startsWith("java.util.function.")) {
+                    return anonymousFunctional(anonymous);
+                }
+                if (c.getType() != null && (q.equals("java.util.Iterator") || simple.equals("Iterator") || q.startsWith("java.util.PrimitiveIterator") || (c.getType().getTypeDeclaration() != null && (c.getType().getTypeDeclaration().isInterface() || c.getType().getTypeDeclaration().hasModifier(ModifierKind.ABSTRACT))))) {
+                    return anonymousFunctional(anonymous);
+                }
+            }
+            if (!isDeclaredType(c.getType())) {
+                if (q.equals("java.util.Scanner")) return "JScanner()";
+                if (q.equals("java.io.PrintWriter")) return "JPrintWriter()";
             if (q.equals("java.io.InputStream") || q.equals("java.io.ByteArrayInputStream")
                     || q.equals("java.io.BufferedInputStream") || q.equals("java.io.BufferedReader")
                     || q.equals("java.io.InputStreamReader") || q.equals("java.io.Reader")
@@ -1876,16 +2965,17 @@ public final class JavaToCpp {
             }
             if (q.equals("java.util.BitSet") || simple.equals("BitSet")) return "JBitSet" + arguments(c.getArguments());
             if (q.equals("java.lang.Thread")) return "JThread" + arguments(c.getArguments());
-            if (q.equals("java.util.Random")) return "JRandom" + arguments(c.getArguments());
+            if (q.equals("java.util.Random") || q.equals("java.util.SplittableRandom") || simple.equals("SplittableRandom") || simple.equals("Random")) return "JRandom" + arguments(c.getArguments());
             if (q.equals("java.util.Date") || simple.equals("Date")) return "JDate" + arguments(c.getArguments());
             if (q.equals("java.util.Iterator") || simple.equals("Iterator")) return type(c.getType()) + arguments(c.getArguments());
             if (q.equals("java.util.StringTokenizer") || simple.equals("StringTokenizer")) return "JStringTokenizer" + arguments(c.getArguments());
             if (q.equals("java.math.BigInteger") || simple.equals("BigInteger")) return "JBigInteger" + arguments(c.getArguments());
             if (q.equals("java.math.BigDecimal") || simple.equals("BigDecimal")) return "JBigDecimal" + arguments(c.getArguments());
+            if (q.equals("java.lang.Object") || simple.equals("Object")) return "make_shared<JObject>()";
             if (q.equals("java.lang.String") || simple.equals("String")) return "JString" + arguments(c.getArguments());
             if (q.equals("java.lang.StringBuilder")) return "JStringBuilder" + arguments(c.getArguments());
             if (q.startsWith("java.util.") && switch (simple) {
-                case "List", "ArrayList", "LinkedList", "Vector", "Set", "HashSet", "LinkedHashSet", "TreeSet", "Map", "HashMap", "LinkedHashMap", "TreeMap",
+                case "List", "ArrayList", "LinkedList", "Vector", "Set", "HashSet", "LinkedHashSet", "TreeSet", "Map", "HashMap", "LinkedHashMap", "TreeMap", "IdentityHashMap",
                         "Deque", "ArrayDeque", "Queue", "PriorityQueue", "Stack" -> true;
                 default -> false;
             }) {
@@ -1896,23 +2986,29 @@ public final class JavaToCpp {
                         targetType = expected;
                     }
                 }
-                return type(targetType) + arguments(c.getArguments());
-            }
-            if (c instanceof CtNewClass<?> anonymous) {
-                if (q.equals("java.util.Comparator") || functionalType(c.getType()) != null || q.startsWith("java.util.function.")) {
-                    return anonymousFunctional(anonymous);
-                }
-                if (c.getType() != null && c.getType().getTypeDeclaration() != null && (c.getType().getTypeDeclaration().isInterface() || c.getType().getTypeDeclaration().hasModifier(ModifierKind.ABSTRACT))) {
-                    return anonymousFunctional(anonymous);
+                    return type(targetType) + arguments(c.getArguments());
                 }
             }
             String args = constructorArguments(c);
             if (isNonStaticNested(c.getType())) {
-                String outer = outerTarget(c.getType().getDeclaringType());
+                String outer = c.getTarget() != null ? expr(c.getTarget()) : outerTarget(c.getType().getDeclaringType());
+                if (c.getTarget() != null && !isPointerType(c.getTarget().getType())) {
+                    outer = "&" + outer;
+                } else if (c.getTarget() != null && isPointerType(c.getTarget().getType())) {
+                    outer = outer + ".get()";
+                }
                 args = "(" + outer + (c.getArguments().isEmpty() ? "" : ", "
                         + args.substring(1, args.length() - 1)) + ")";
             }
             String rawType = rawCustomType(c.getType());
+            // ダイヤモンド演算子での型推論ミスを回避: 変数宣言の左辺型を優先して使う
+            {
+                CtTypeReference<?> expected = getExpectedType(c);
+                if (expected != null && !expected.getActualTypeArguments().isEmpty()
+                        && isDeclaredType(expected)) {
+                    rawType = rawCustomType(expected);
+                }
+            }
             if (c.getType() != null && c.getType().getActualTypeArguments().isEmpty()
                     && c.getType().getTypeDeclaration() != null
                     && !c.getType().getTypeDeclaration().getFormalCtTypeParameters().isEmpty()) {
@@ -1935,11 +3031,23 @@ public final class JavaToCpp {
                     && !rawType.startsWith("struct ") && !rawType.contains("::")) {
                 rawType = "struct " + rawType;
             }
-            if (rawType.contains("::") && rawType.contains("<")) {
+            if (hasTopLevelScopeResolution(rawType) && rawType.contains("<")) {
                 rawType = rawType.replaceAll("::([A-Za-z0-9_]+)<", "::template $1<");
                 rawType = "typename " + rawType;
             }
             return "make_shared<" + rawType + ">" + args;
+        }
+
+        /** enclosing が type の外部エンクロージング型（先祖型）かどうか判定する。計算量: O(depth(type))。 */
+        // 未テスト
+        private boolean isEnclosingType(CtType<?> enclosing, CtType<?> type) {
+            if (enclosing == null || type == null) return false;
+            CtType<?> cursor = type.getDeclaringType();
+            while (cursor != null) {
+                if (simpleName(cursor.getSimpleName()).equals(simpleName(enclosing.getSimpleName()))) return true;
+                cursor = cursor.getDeclaringType();
+            }
+            return false;
         }
 
         /** t が非 static のメンバー型なら true を返す。計算量: O(1)。 */
@@ -1956,7 +3064,7 @@ public final class JavaToCpp {
         private String outerTarget(CtTypeReference<?> t) {
             if (currentStaticContext) {
                 String typeName = t != null ? id(t.getSimpleName()) : (currentType != null ? id(currentType.getSimpleName()) : "Main");
-                return "make_shared<" + typeName + ">()";
+                return "make_shared<" + typeName + ">().get()";
             }
             if (currentType == null || t == null) return "this";
             CtType<?> cursor = currentType;
@@ -1974,6 +3082,7 @@ public final class JavaToCpp {
         private String initializer(CtTypeReference<?> t, CtExpression<?> e) {
             if (isNullLiteral(e)) {
                 if (t == null || t instanceof CtTypeParameterReference) return "{}";
+                if (t.getQualifiedName().equals("java.util.Comparator") || functionalType(t) != null) return "nullptr";
                 String typeStr = type(t);
                 return typeStr.contains(" ") ? "(" + typeStr + "){}" : typeStr + "{}";
             }
@@ -1985,6 +3094,64 @@ public final class JavaToCpp {
                 String targetTypeStr = type(t);
                 if (targetTypeStr.startsWith("vector<JList<")) {
                     return targetTypeStr + "(" + expr(e) + ")";
+                }
+            }
+            if (t != null && isDeclaredType(t) && e instanceof CtLambda<?> lambda) {
+                CtType<?> decl = t.getTypeDeclaration();
+                if (decl != null && (decl.isInterface() || decl.hasModifier(ModifierKind.ABSTRACT))) {
+                    List<CtMethod<?>> methods = decl.getMethods().stream()
+                            .filter(m -> !m.isDefaultMethod() && !m.hasModifier(ModifierKind.STATIC) && !m.getSimpleName().equals("equals"))
+                            .toList();
+                    if (methods.size() == 1) {
+                        CtMethod<?> sam = methods.get(0);
+                        java.util.Map<String, CtTypeReference<?>> map = new java.util.HashMap<>();
+                        for (int k = 0; k < Math.min(decl.getFormalCtTypeParameters().size(), t.getActualTypeArguments().size()); k++) {
+                            map.put(decl.getFormalCtTypeParameters().get(k).getSimpleName(), t.getActualTypeArguments().get(k));
+                        }
+                        CtTypeReference<?> retType = substituteTypeArguments(sam.getType(), map);
+                        boolean isNonLocal = lambda.getParent(CtExecutable.class) == null;
+                        String capture = isNonLocal ? "[]" : (currentStaticContext || currentType == null ? "[&]" : "[&, this]");
+                        StringBuilder sb = new StringBuilder(capture).append("() {\n");
+                        sb.append("    auto __fn = ").append(expr(lambda)).append(";\n");
+                        sb.append("    struct __Anon : public ").append(rawCustomType(t)).append(" {\n");
+                        sb.append("        decltype(__fn) fn;\n");
+                        sb.append("        __Anon(decltype(__fn) fn) : fn(fn) {}\n");
+                        sb.append("        ").append(type(retType)).append(" ").append(id(sam.getSimpleName())).append("(");
+                        List<CtParameter<?>> origParams = sam.getParameters();
+                        for (int k = 0; k < origParams.size(); k++) {
+                            if (k > 0) sb.append(", ");
+                            CtTypeReference<?> origType = origParams.get(k).getType();
+                            CtTypeReference<?> pType = substituteTypeArguments(origType, map);
+                            String pTypeStr = type(pType);
+                            boolean isTypeParam = origType instanceof CtTypeParameterReference;
+                            if (isTypeParam || isPassByReferenceType(pTypeStr)) {
+                                sb.append("const ").append(pTypeStr).append("& p").append(k).append("_const");
+                            } else {
+                                sb.append(pTypeStr).append(" p").append(k);
+                            }
+                        }
+                        sb.append(") override {\n");
+                        for (int k = 0; k < origParams.size(); k++) {
+                            CtTypeReference<?> origType = origParams.get(k).getType();
+                            CtTypeReference<?> pType = substituteTypeArguments(origType, map);
+                            String pTypeStr = type(pType);
+                            boolean isTypeParam = origType instanceof CtTypeParameterReference;
+                            if (isTypeParam || isPassByReferenceType(pTypeStr)) {
+                                sb.append("            auto& p").append(k).append(" = const_cast<").append(pTypeStr).append("&>(p").append(k).append("_const);\n");
+                            }
+                        }
+                        sb.append("            return (fn)(");
+                        for (int k = 0; k < origParams.size(); k++) {
+                            if (k > 0) sb.append(", ");
+                            sb.append("p").append(k);
+                        }
+                        sb.append(");\n");
+                        sb.append("        }\n");
+                        sb.append("    };\n");
+                        sb.append("    return static_pointer_cast<").append(rawCustomType(t)).append(">(make_shared<__Anon>(__fn));\n");
+                        sb.append("}()");
+                        return sb.toString();
+                    }
                 }
             }
             return expr(e);
@@ -2015,7 +3182,7 @@ public final class JavaToCpp {
                 String capture = c.getParent(CtMethod.class) == null ? "[]" : "[&]";
                 StringBuilder s = new StringBuilder(capture).append("(");
                 appendParameters(s, method.getParameters());
-                s.append(") ");
+                s.append(") -> ").append(type(method.getType())).append(" ");
 
                 boolean recursive = hasRecursiveCall(method);
                 CtMethod<?> previousAnonymousMethod = currentAnonymousMethod;
@@ -2046,35 +3213,105 @@ public final class JavaToCpp {
                 return s.append(block).toString();
             }
 
+            boolean isNonLocal = c.getParent(CtExecutable.class) == null;
+            boolean isInstanceField = isNonLocal && !currentStaticContext && currentType != null;
             String outerRef = currentStaticContext || currentType == null ? "nullptr" : "this";
-            String capture = currentStaticContext || currentType == null ? "[]" : "[this]";
+            String capture = isInstanceField ? "[this]" : (isNonLocal ? "[]" : (currentStaticContext || currentType == null ? "[=]" : "[=, this]"));
+            boolean isIterator = c.getType() != null && (c.getType().getQualifiedName().equals("java.util.Iterator") || simpleName(c.getType().getSimpleName()).equals("Iterator"));
             StringBuilder s = new StringBuilder(capture).append("() {\n");
-            s.append("    auto outer_ptr = ").append(outerRef).append(";\n");
-            s.append("    struct __Anon : public ").append(rawCustomType(c.getType())).append(" {\n");
-            s.append("        decltype(outer_ptr) outer;\n");
-            for (CtField<?> f : anonymous.getFields()) {
-                s.append("        ").append(type(f.getType())).append(" ").append(fieldName(f.getReference()));
-                if (f.getDefaultExpression() != null) {
-                    s.append(" = ").append(initializer(f.getType(), f.getDefaultExpression()));
-                }
-                s.append(";\n");
+            if (isIterator && outerRef.equals("this")) {
+                s.append("    auto outer_ptr = const_cast<std::decay_t<decltype(*this)>*>(this);\n");
+            } else {
+                s.append("    auto outer_ptr = ").append(outerRef).append(";\n");
             }
-            s.append("        __Anon(decltype(outer_ptr) o) : outer(o) {}\n");
+            List<CtField<?>> fields = anonymous.getFields().stream().toList();
+            for (int i = 0; i < fields.size(); i++) {
+                CtField<?> f = fields.get(i);
+                if (f.getDefaultExpression() != null) {
+                    s.append("    auto __init_").append(i).append(" = ").append(initializer(f.getType(), f.getDefaultExpression())).append(";\n");
+                }
+            }
+            if (isIterator) {
+                s.append("    struct __Anon : public std::enable_shared_from_this<__Anon> {\n");
+            } else {
+                s.append("    struct __Anon : public ").append(rawCustomType(c.getType())).append(", public std::enable_shared_from_this<__Anon> {\n");
+            }
+            s.append("        decltype(outer_ptr) outer;\n");
+            for (int i = 0; i < fields.size(); i++) {
+                CtField<?> f = fields.get(i);
+                s.append("        ").append(type(f.getType())).append(" ").append(fieldName(f.getReference())).append(";\n");
+            }
+            s.append("        __Anon(decltype(outer_ptr) o");
+            for (int i = 0; i < fields.size(); i++) {
+                CtField<?> f = fields.get(i);
+                if (f.getDefaultExpression() != null) {
+                    s.append(", const ").append(type(f.getType())).append("& __p_").append(i);
+                }
+            }
+            s.append(") : outer(o)");
+            for (int i = 0; i < fields.size(); i++) {
+                CtField<?> f = fields.get(i);
+                if (f.getDefaultExpression() != null) {
+                    s.append(", ").append(fieldName(f.getReference())).append("(__p_").append(i).append(")");
+                }
+            }
+            s.append(" {}\n");
             CtType<?> previousType = currentType;
             for (CtMethod<?> m : methods) {
                 currentType = anonymous;
-                s.append("        ").append(type(m.getType())).append(" ").append(id(m.getSimpleName())).append("(");
-                appendParameters(s, m.getParameters());
-                s.append(") override ");
+                List<CtTypeReference<?>> overrideParamTypes = getBaseMethodParameterTypes(m, c.getType());
+                List<Boolean> forceConstRef = getBaseMethodParameterIsTypeParam(m, c.getType());
+                CtTypeReference<?> retType = m.getType();
+                CtTypeReference<?> baseRet = getBaseMethodReturnTypeRef(m, c.getType());
+                if (baseRet != null) retType = baseRet;
+                s.append("        ").append(type(retType)).append(" ").append(id(m.getSimpleName())).append("(");
+                appendParameters(s, m.getParameters(), overrideParamTypes, forceConstRef);
+                boolean isOverride = !isIterator && (m.getAnnotation(java.lang.Override.class) != null
+                        || (anonymous.getSuperclass() != null && anonymous.getSuperclass().getTypeDeclaration() != null
+                                && !anonymous.getSuperclass().getTypeDeclaration().getMethodsByName(m.getSimpleName()).isEmpty())
+                        || anonymous.getSuperInterfaces().stream().anyMatch(si -> si.getTypeDeclaration() != null
+                                && !si.getTypeDeclaration().getMethodsByName(m.getSimpleName()).isEmpty()));
+                if (isOverride) {
+                    s.append(") override ");
+                } else {
+                    s.append(") ");
+                }
                 int length = out.length();
-                emitBlock(m.getBody(), false, m.getParameters());
+                List<CtParameter<?>> blockParams = m.getParameters();
+                if (overrideParamTypes != null) {
+                    blockParams = new java.util.ArrayList<>();
+                    for (int pIdx = 0; pIdx < m.getParameters().size(); pIdx++) {
+                        CtParameter<?> origP = m.getParameters().get(pIdx);
+                        CtParameter<?> cloneP = origP.clone();
+                        if (pIdx < overrideParamTypes.size()) cloneP.setType(overrideParamTypes.get(pIdx));
+                        blockParams.add(cloneP);
+                    }
+                }
+                emitBlock(m.getBody(), false, blockParams, forceConstRef);
                 String block = out.substring(length);
                 out.setLength(length);
                 s.append(block).append("\n");
             }
             currentType = previousType;
             s.append("    };\n");
-            s.append("    return static_pointer_cast<").append(rawCustomType(c.getType())).append(">(make_shared<__Anon>(outer_ptr));\n");
+            if (isIterator) {
+                s.append("    return ").append(type(c.getType())).append("(make_shared<__Anon>(outer_ptr");
+                for (int i = 0; i < fields.size(); i++) {
+                    CtField<?> f = fields.get(i);
+                    if (f.getDefaultExpression() != null) {
+                        s.append(", __init_").append(i);
+                    }
+                }
+            } else {
+                s.append("    return static_pointer_cast<").append(rawCustomType(c.getType())).append(">(make_shared<__Anon>(outer_ptr");
+                for (int i = 0; i < fields.size(); i++) {
+                    CtField<?> f = fields.get(i);
+                    if (f.getDefaultExpression() != null) {
+                        s.append(", __init_").append(i);
+                    }
+                }
+            }
+            s.append("));\n");
             s.append("}()");
             return s.toString();
         }
@@ -2099,7 +3336,29 @@ public final class JavaToCpp {
                 case "java.math.BigDecimal", "BigDecimal" -> "JBigDecimal";
                 case "java.util.stream.IntStream" -> "JIntStream";
                 case "java.util.stream.LongStream" -> "JLongStream";
-                default -> rawCustomType(t);
+                case "java.util.OptionalLong", "OptionalLong" -> "OptionalLong";
+                case "java.util.OptionalInt", "OptionalInt" -> "OptionalInt";
+                case "java.util.OptionalDouble", "OptionalDouble" -> "OptionalDouble";
+                case "java.util.Optional", "Optional" -> "Optional";
+                default -> {
+                    String raw = rawCustomType(t);
+                    if (isDeclaredType(t) && !raw.contains("<")) {
+                        int paramCount = t.getTypeDeclaration() != null ? t.getTypeDeclaration().getFormalCtTypeParameters().size()
+                                : (int) model.getAllTypes().stream()
+                                        .filter(decl -> decl.getSimpleName().equals(simpleName(t.getSimpleName())))
+                                        .mapToInt(decl -> decl.getFormalCtTypeParameters().size()).findFirst().orElse(0);
+                        if (paramCount > 0) {
+                            StringBuilder sb = new StringBuilder(raw).append("<");
+                            for (int i = 0; i < paramCount; i++) {
+                                if (i > 0) sb.append(", ");
+                                sb.append("int");
+                            }
+                            sb.append(">");
+                            raw = sb.toString();
+                        }
+                    }
+                    yield raw;
+                }
             };
         }
 
@@ -2153,7 +3412,7 @@ public final class JavaToCpp {
         /** t が Java の String 型なら true を返す。計算量: O(1)。 */
         // 未テスト
         private boolean isJavaString(CtTypeReference<?> t) {
-            return t != null && t.getQualifiedName().equals("java.lang.String");
+            return t != null && (t.getQualifiedName().equals("java.lang.String") || t.getQualifiedName().equals("java.lang.CharSequence"));
         }
 
         /** t が プリミティブまたはそのラッパー型なら true を返す。計算量: O(1)。 */
@@ -2284,7 +3543,16 @@ public final class JavaToCpp {
         /** ラムダ l が参照する変数を値捕捉する C++ ラムダを返す。計算量: O(|l| + c)。c は参照変数数。 */
         // 未テスト
         private String lambda(CtLambda<?> l) {
-            StringBuilder s = new StringBuilder("[=](");
+            // 親が未初期化の場合は安全に [&] を使う（ローカルラムダとして扱う）
+            boolean isNonLocal = l.isParentInitialized() && l.getParent(CtExecutable.class) == null;
+            boolean isEscaping = isEscapingLambda(l);
+            // isNonLocal でもラムダ内からローカル変数（フィールド以外）を参照している場合は [&] にする
+            boolean nonLocalNeedsCapture = isNonLocal && lambdaReferencesLocalVars(l);
+            // コンストラクタ内のラムダはコンストラクタのローカル変数をキャプチャすると
+            // コンストラクタ終了後にダングリング参照になるため、常に [=] を使う。
+            boolean inConstructor = l.isParentInitialized() && l.getParent(spoon.reflect.declaration.CtConstructor.class) != null;
+            String capture = (isNonLocal && !nonLocalNeedsCapture) ? "[]" : (isEscaping || inConstructor ? "[=]" : "[&]");
+            StringBuilder s = new StringBuilder(capture).append("(");
             appendParameters(s, l.getParameters());
             s.append(") ");
             if (l.getBody() != null) {
@@ -2345,85 +3613,14 @@ public final class JavaToCpp {
         private String type(CtTypeReference<?> t) {
             if (t == null) return "void";
             if (t instanceof CtArrayTypeReference<?> array) return "vector<" + type(array.getComponentType()) + ">";
-            String q = t.getQualifiedName();
-            if (q.equals("java.util.Scanner")) return "JScanner";
-            if (q.equals("java.io.PrintWriter")) return "JPrintWriter";
-            String primitive = switch (q) {
-                case "void" -> "void"; case "boolean", "java.lang.Boolean" -> "bool";
-                case "byte" -> "int8_t"; case "short" -> "int16_t"; case "int", "java.lang.Integer" -> "int";
-                case "long", "java.lang.Long" -> "long long"; case "char", "java.lang.Character" -> "char";
-                case "float", "java.lang.Float" -> "float"; case "double", "java.lang.Double" -> "double";
-                case "java.lang.String" -> "JString"; case "java.lang.Object" -> "JObject";
-                case "java.lang.Number", "Number" -> "JNumber";
-                case "java.lang.StringBuilder" -> "JStringBuilder";
-                case "java.util.StringTokenizer", "StringTokenizer" -> "JStringTokenizer";
-                case "java.util.Scanner", "Scanner" -> "JScanner"; case "java.io.PrintWriter", "PrintWriter" -> "JPrintWriter";
-                case "java.util.Iterator" -> "JIterator<" + (t.getActualTypeArguments().isEmpty() ? "JObject" : type(t.getActualTypeArguments().get(0))) + ">";
-                case "java.util.PrimitiveIterator$OfInt", "java.util.PrimitiveIterator.OfInt", "PrimitiveIterator.OfInt", "PrimitiveIterator$OfInt" -> "PrimitiveIterator::OfInt";
-                case "java.util.PrimitiveIterator$OfLong", "java.util.PrimitiveIterator.OfLong", "PrimitiveIterator.OfLong", "PrimitiveIterator$OfLong" -> "PrimitiveIterator::OfLong";
-                case "java.util.PrimitiveIterator$OfDouble", "java.util.PrimitiveIterator.OfDouble", "PrimitiveIterator.OfDouble", "PrimitiveIterator$OfDouble" -> "PrimitiveIterator::OfDouble";
-                case "java.io.InputStream", "java.io.ByteArrayInputStream", "java.io.BufferedInputStream",
-                        "java.io.BufferedReader", "java.io.InputStreamReader", "java.io.Reader",
-                        "java.io.StringReader", "java.io.FileInputStream", "java.io.DataInputStream" -> "JInputStream";
-                case "java.io.BufferedWriter", "java.io.OutputStreamWriter", "java.io.Writer",
-                        "java.io.FileWriter", "java.io.FileOutputStream", "java.io.DataOutputStream",
-                        "java.io.PrintStream", "java.io.BufferedOutputStream", "java.io.OutputStream",
-                        "java.io.ByteArrayOutputStream" -> "JPrintWriter";
-                case "java.util.Comparator" -> {
-                    if (t.getActualTypeArguments().isEmpty()) yield "function<int(JObject, JObject)>";
-                    CtTypeReference<?> arg = t.getActualTypeArguments().get(0);
-                    yield "function<int(" + type(arg) + ", " + type(arg) + ")>";
-                }
-                case "java.lang.Comparable" -> "shared_ptr<Comparable<" + (t.getActualTypeArguments().isEmpty() ? "JObject" : type(t.getActualTypeArguments().get(0))) + ">>";
-                case "java.lang.Runnable" -> "Runnable";
-                case "java.lang.AutoCloseable", "java.io.Closeable" -> "AutoCloseable";
-                case "java.io.Serializable" -> "Serializable";
-                case "java.lang.Cloneable" -> "Cloneable";
-                case "java.lang.Runtime", "Runtime" -> "JRuntime";
-                case "java.lang.Thread" -> "JThread"; case "java.util.Random", "java.util.random.RandomGenerator" -> "JRandom";
-                case "java.util.Date", "Date" -> "JDate";
-                case "java.lang.Class", "Class" -> "JClass";
-                case "java.lang.Iterable" -> t.getActualTypeArguments().isEmpty() ? "JIterable<JObject>" : "JIterable<" + type(t.getActualTypeArguments().get(0)) + ">";
-                case "java.util.BitSet", "BitSet" -> "JBitSet";
-                case "java.math.BigInteger", "BigInteger" -> "JBigInteger";
-                case "java.math.BigDecimal", "BigDecimal" -> "JBigDecimal";
-                case "java.util.stream.IntStream" -> "JIntStream"; case "java.util.stream.LongStream" -> "JLongStream";
-                case "java.util.Optional", "Optional" -> t.getActualTypeArguments().isEmpty() ? "JOptional<JObject>" : "JOptional<" + type(t.getActualTypeArguments().get(0)) + ">";
-                case "java.util.OptionalInt", "OptionalInt" -> "JOptional<int>";
-                case "java.util.OptionalLong", "OptionalLong" -> "JOptional<long long>";
-                case "java.util.OptionalDouble", "OptionalDouble" -> "JOptional<double>";
-                default -> null;
-            };
-            if (primitive != null) return primitive;
-            String functional = functionalType(t);
-            if (functional != null) return functional;
-            if (q.equals("java.util.Map$Entry")) {
-                List<CtTypeReference<?>> a = t.getActualTypeArguments();
-                return "std::pair<" + type(a.get(0)) + ", " + type(a.get(1)) + ">";
-            }
-            String container = switch (q) {
-                case "java.util.List", "java.util.ArrayList", "java.util.LinkedList", "java.util.Vector" -> "JList";
-                case "java.util.Set", "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet" -> "JSet";
-                case "java.util.Map", "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap" -> "JMap";
-                case "java.util.Deque", "java.util.ArrayDeque", "java.util.Queue" -> "JDeque";
-                case "java.util.Stack" -> "JStack";
-                case "java.util.PriorityQueue" -> "JPriorityQueue";
-                default -> null;
-            };
-            if (container != null) {
-                StringBuilder s = new StringBuilder(container).append('<');
-                List<CtTypeReference<?>> arguments = t.getActualTypeArguments();
-                if (arguments.isEmpty()) {
-                    s.append(container.equals("JMap") ? "JObject, JObject" : "JObject");
-                }
-                for (int i = 0; i < arguments.size(); i++) {
-                    if (i > 0) s.append(", ");
-                    s.append(type(arguments.get(i)));
-                }
-                return s.append('>').toString();
-            }
             if (t instanceof spoon.reflect.reference.CtWildcardReference wildcard) {
-                return wildcard.getBoundingType() != null ? type(wildcard.getBoundingType()) : "JObject";
+                if (wildcard.getBoundingType() != null && !wildcard.getBoundingType().getQualifiedName().equals("java.lang.Object")) {
+                    return type(wildcard.getBoundingType());
+                }
+                if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                    return id(currentType.getFormalCtTypeParameters().get(0).getSimpleName());
+                }
+                return "JObject";
             }
             if (t instanceof CtTypeParameterReference parameter) {
                 if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
@@ -2455,7 +3652,129 @@ public final class JavaToCpp {
                 if (!raw.startsWith("J") && !raw.startsWith("std::") && !raw.startsWith("struct ") && !raw.contains("::")) {
                     raw = "struct " + raw;
                 }
-                if (raw.contains("::") && raw.contains("<")) {
+                if (hasTopLevelScopeResolution(raw) && raw.contains("<")) {
+                    raw = raw.replaceAll("::([A-Za-z0-9_]+)<", "::template $1<");
+                    raw = "typename " + raw;
+                }
+                return "shared_ptr<" + raw + ">";
+            }
+            String q = t.getQualifiedName();
+            if (q.equals("java.util.Scanner")) return "JScanner";
+            if (q.equals("java.io.PrintWriter")) return "JPrintWriter";
+            String primitive = switch (q) {
+                case "void" -> "void"; case "boolean", "java.lang.Boolean" -> "bool";
+                case "byte" -> "int8_t"; case "short" -> "int16_t"; case "int", "java.lang.Integer" -> "int";
+                case "long", "java.lang.Long" -> "long long"; case "char", "java.lang.Character" -> "char";
+                case "float", "java.lang.Float" -> "float"; case "double", "java.lang.Double" -> "double";
+                case "java.lang.String", "java.lang.CharSequence", "CharSequence" -> "JString"; case "java.lang.Object" -> "JObject";
+                case "java.lang.Number", "Number" -> "JNumber";
+                case "java.lang.StringBuilder" -> "JStringBuilder";
+                case "java.util.StringTokenizer", "StringTokenizer" -> "JStringTokenizer";
+                case "java.util.Scanner", "Scanner" -> "JScanner"; case "java.io.PrintWriter", "PrintWriter" -> "JPrintWriter";
+                case "java.util.Iterator" -> "JIterator<" + (t.getActualTypeArguments().isEmpty() ? "JObject" : type(t.getActualTypeArguments().get(0))) + ">";
+                case "java.util.PrimitiveIterator$OfInt", "java.util.PrimitiveIterator.OfInt", "PrimitiveIterator.OfInt", "PrimitiveIterator$OfInt" -> "PrimitiveIterator::OfInt";
+                case "java.util.PrimitiveIterator$OfLong", "java.util.PrimitiveIterator.OfLong", "PrimitiveIterator.OfLong", "PrimitiveIterator$OfLong" -> "PrimitiveIterator::OfLong";
+                case "java.util.PrimitiveIterator$OfDouble", "java.util.PrimitiveIterator.OfDouble", "PrimitiveIterator.OfDouble", "PrimitiveIterator$OfDouble" -> "PrimitiveIterator::OfDouble";
+                case "java.io.InputStream", "java.io.ByteArrayInputStream", "java.io.BufferedInputStream",
+                        "java.io.BufferedReader", "java.io.InputStreamReader", "java.io.Reader",
+                        "java.io.StringReader", "java.io.FileInputStream", "java.io.DataInputStream" -> "JInputStream";
+                case "java.io.BufferedWriter", "java.io.OutputStreamWriter", "java.io.Writer",
+                        "java.io.FileWriter", "java.io.FileOutputStream", "java.io.DataOutputStream",
+                        "java.io.PrintStream", "java.io.BufferedOutputStream", "java.io.OutputStream",
+                        "java.io.ByteArrayOutputStream" -> "JPrintWriter";
+                case "java.util.Comparator" -> {
+                    if (t.getActualTypeArguments().isEmpty()) yield "function<int(JObject, JObject)>";
+                    CtTypeReference<?> arg = t.getActualTypeArguments().get(0);
+                    yield "function<int(" + type(arg) + ", " + type(arg) + ")>";
+                }
+                case "java.lang.Comparable" -> "shared_ptr<Comparable<" + (t.getActualTypeArguments().isEmpty() ? "JObject" : type(t.getActualTypeArguments().get(0))) + ">>";
+                case "java.lang.Runnable" -> "Runnable";
+                case "java.lang.AutoCloseable", "java.io.Closeable" -> "AutoCloseable";
+                case "java.io.Serializable" -> "Serializable";
+                case "java.lang.Cloneable" -> "Cloneable";
+                case "java.lang.Runtime", "Runtime" -> "JRuntime";
+                case "java.lang.Thread" -> "JThread"; case "java.util.Random", "java.util.random.RandomGenerator", "java.util.SplittableRandom", "SplittableRandom" -> "JRandom";
+                case "java.util.Date", "Date" -> "JDate";
+                case "java.lang.Class", "Class" -> "JClass";
+                case "java.lang.Iterable" -> t.getActualTypeArguments().isEmpty() ? "JIterable<JObject>" : "JIterable<" + type(t.getActualTypeArguments().get(0)) + ">";
+                case "java.util.BitSet", "BitSet" -> "JBitSet";
+                case "java.math.BigInteger", "BigInteger" -> "JBigInteger";
+                case "java.math.BigDecimal", "BigDecimal" -> "JBigDecimal";
+                case "java.util.stream.IntStream" -> "JIntStream"; case "java.util.stream.LongStream" -> "JLongStream";
+                case "java.util.Optional", "Optional" -> t.getActualTypeArguments().isEmpty() ? "JOptional<JObject>" : "JOptional<" + type(t.getActualTypeArguments().get(0)) + ">";
+                case "java.util.OptionalInt", "OptionalInt" -> "JOptional<int>";
+                case "java.util.OptionalLong", "OptionalLong" -> "JOptional<long long>";
+                case "java.util.OptionalDouble", "OptionalDouble" -> "JOptional<double>";
+                default -> null;
+            };
+            if (primitive != null) return primitive;
+            String functional = functionalType(t);
+            if (functional != null) return functional;
+            if (q.equals("java.util.Map$Entry")) {
+                List<CtTypeReference<?>> a = t.getActualTypeArguments();
+                return "JEntry<" + type(a.get(0)) + ", " + type(a.get(1)) + ">";
+            }
+            String container = switch (q) {
+                case "java.util.List", "java.util.ArrayList", "java.util.LinkedList", "java.util.Vector" -> "JList";
+                case "java.util.Set", "java.util.HashSet", "java.util.LinkedHashSet", "java.util.TreeSet" -> "JSet";
+                case "java.util.Map", "java.util.HashMap", "java.util.LinkedHashMap", "java.util.TreeMap", "java.util.IdentityHashMap" -> "JMap";
+                case "java.util.Deque", "java.util.ArrayDeque", "java.util.Queue" -> "JDeque";
+                case "java.util.Stack" -> "JStack";
+                case "java.util.PriorityQueue" -> "JPriorityQueue";
+                default -> null;
+            };
+            if (container != null) {
+                StringBuilder s = new StringBuilder(container).append('<');
+                List<CtTypeReference<?>> arguments = t.getActualTypeArguments();
+                if (arguments.isEmpty()) {
+                    s.append(container.equals("JMap") ? "JObject, JObject" : "JObject");
+                }
+                for (int i = 0; i < arguments.size(); i++) {
+                    if (i > 0) s.append(", ");
+                    s.append(type(arguments.get(i)));
+                }
+                return s.append('>').toString();
+            }
+            if (t instanceof spoon.reflect.reference.CtWildcardReference wildcard) {
+                if (wildcard.getBoundingType() != null && !wildcard.getBoundingType().getQualifiedName().equals("java.lang.Object")) {
+                    return type(wildcard.getBoundingType());
+                }
+                if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                    return id(currentType.getFormalCtTypeParameters().get(0).getSimpleName());
+                }
+                return "JObject";
+            }
+            if (t instanceof CtTypeParameterReference parameter) {
+                if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                    boolean inScope = currentType.getFormalCtTypeParameters().stream()
+                            .anyMatch(tp -> tp.getSimpleName().equals(parameter.getSimpleName()));
+                    if (!inScope && (currentAnonymousMethod == null || currentAnonymousMethod.getFormalCtTypeParameters().stream().noneMatch(tp -> tp.getSimpleName().equals(parameter.getSimpleName())))) {
+                        return id(currentType.getFormalCtTypeParameters().get(0).getSimpleName());
+                    }
+                }
+                return typeParameterName(parameter);
+            }
+            if (isDeclaredType(t)) {
+                String raw = rawCustomType(t);
+                boolean hasFormalParams = (t.getTypeDeclaration() != null && !t.getTypeDeclaration().getFormalCtTypeParameters().isEmpty())
+                        || model.getAllTypes().stream().anyMatch(decl -> decl.getSimpleName().equals(simpleName(t.getSimpleName())) && !decl.getFormalCtTypeParameters().isEmpty());
+                if (t.getActualTypeArguments().isEmpty() && hasFormalParams && !raw.contains("<")) {
+                    StringBuilder sb = new StringBuilder(raw).append('<');
+                    int paramCount = t.getTypeDeclaration() != null ? t.getTypeDeclaration().getFormalCtTypeParameters().size() : 1;
+                    for (int i = 0; i < paramCount; i++) {
+                        if (i > 0) sb.append(", ");
+                        if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()) {
+                            sb.append(id(currentType.getFormalCtTypeParameters().get(Math.min(i, currentType.getFormalCtTypeParameters().size() - 1)).getSimpleName()));
+                        } else {
+                            sb.append("JObject");
+                        }
+                    }
+                    raw = sb.append('>').toString();
+                }
+                if (!raw.startsWith("J") && !raw.startsWith("std::") && !raw.startsWith("struct ") && !raw.contains("::")) {
+                    raw = "struct " + raw;
+                }
+                if (hasTopLevelScopeResolution(raw) && raw.contains("<")) {
                     raw = raw.replaceAll("::([A-Za-z0-9_]+)<", "::template $1<");
                     raw = "typename " + raw;
                 }
@@ -2466,14 +3785,27 @@ public final class JavaToCpp {
 
         /** 参照型 t のポインタでない C++ 型名を返す。計算量: O(typeArguments(t))。 */
         // 未テスト
+        /** 型文字列 s の最上位（山括弧の外側）にスコープ解決演算子 :: が含まれるか判定する。計算量: O(|s|)。 */
+        // 未テスト
+        private boolean hasTopLevelScopeResolution(String s) {
+            int depth = 0;
+            for (int i = 0; i < s.length() - 1; i++) {
+                char c = s.charAt(i);
+                if (c == '<') depth++;
+                else if (c == '>') depth--;
+                else if (depth == 0 && c == ':' && s.charAt(i + 1) == ':') return true;
+            }
+            return false;
+        }
+
         private String rawCustomType(CtTypeReference<?> t) {
             String q = t.getQualifiedName();
-            String mapped = switch (q) {
+            String mapped = isDeclaredType(t) ? null : switch (q) {
                 case "java.util.PriorityQueue", "PriorityQueue" -> "JPriorityQueue";
-                case "java.util.List", "List" -> "JList";
-                case "java.util.Set", "Set" -> "JSet";
-                case "java.util.Map", "Map" -> "JMap";
-                case "java.util.Deque", "Deque", "ArrayDeque" -> "JDeque";
+                case "java.util.List", "List", "java.util.ArrayList", "ArrayList", "java.util.LinkedList", "LinkedList", "java.util.Vector", "Vector" -> "JList";
+                case "java.util.Set", "Set", "java.util.HashSet", "HashSet", "java.util.LinkedHashSet", "LinkedHashSet", "java.util.TreeSet", "TreeSet" -> "JSet";
+                case "java.util.Map", "Map", "java.util.HashMap", "HashMap", "java.util.LinkedHashMap", "LinkedHashMap", "java.util.TreeMap", "TreeMap", "java.util.IdentityHashMap", "IdentityHashMap" -> "JMap";
+                case "java.util.Deque", "Deque", "ArrayDeque", "java.util.ArrayDeque", "java.util.Queue", "Queue" -> "JDeque";
                 case "java.util.Stack", "Stack" -> "JStack";
                 case "java.io.PrintWriter", "PrintWriter" -> "JPrintWriter";
                 case "java.util.Scanner", "Scanner" -> "JScanner";
@@ -2503,10 +3835,47 @@ public final class JavaToCpp {
             for (int i = start; i < nested.length; i++) {
                 if (i > start) s.append("::");
                 s.append(id(nested[i]));
-                if (i == 0 && nested.length > 1 && !t.getActualTypeArguments().isEmpty()
-                        && model.getAllTypes().stream().anyMatch(declared -> declared.getSimpleName().equals(nested[0])
-                        && !declared.getFormalCtTypeParameters().isEmpty())) {
-                    appendTypeArguments(s, t.getActualTypeArguments());
+                if (i == 0 && nested.length > 1) {
+                    CtType<?> outerDecl = model.getAllTypes().stream().filter(declared -> declared.getSimpleName().equals(nested[0])).findFirst().orElse(null);
+                    if (outerDecl != null && !outerDecl.getFormalCtTypeParameters().isEmpty()) {
+                        int expectedCount = outerDecl.getFormalCtTypeParameters().size();
+                        List<CtTypeReference<?>> declArgs = (t.getDeclaringType() != null && !t.getDeclaringType().getActualTypeArguments().isEmpty())
+                                ? t.getDeclaringType().getActualTypeArguments()
+                                : java.util.Collections.emptyList();
+                        if (declArgs.isEmpty()) {
+                            CtExecutable<?> exec = t.getParent(CtExecutable.class);
+                            if (exec != null) {
+                                for (CtVariable<?> var : exec.getElements(new TypeFilter<>(CtVariable.class))) {
+                                    CtTypeReference<?> vt = var.getType();
+                                    if (vt != null && vt.getSimpleName().equals(nested[0]) && !vt.getActualTypeArguments().isEmpty()) {
+                                        declArgs = vt.getActualTypeArguments();
+                                        break;
+                                    }
+                                }
+                            }
+                        }
+                        if (declArgs.isEmpty() && currentType instanceof CtClass<?> cls && cls.getSuperclass() != null) {
+                            CtTypeReference<?> superRef = cls.getSuperclass();
+                            if (superRef.getSimpleName().equals(nested[0]) && !superRef.getActualTypeArguments().isEmpty()) {
+                                declArgs = superRef.getActualTypeArguments();
+                            }
+                        }
+                        s.append('<');
+                        for (int argIdx = 0; argIdx < expectedCount; argIdx++) {
+                            if (argIdx > 0) s.append(", ");
+                            if (argIdx < declArgs.size()) {
+                                s.append(type(declArgs.get(argIdx)));
+                            } else if (argIdx < t.getActualTypeArguments().size()) {
+                                s.append(type(t.getActualTypeArguments().get(argIdx)));
+                            } else if (currentType != null && !currentType.getFormalCtTypeParameters().isEmpty()
+                                    && argIdx < currentType.getFormalCtTypeParameters().size()) {
+                                s.append(typeParameterName(currentType.getFormalCtTypeParameters().get(argIdx)));
+                            } else {
+                                s.append("JObject");
+                            }
+                        }
+                        s.append('>');
+                    }
                 }
             }
             if (!t.getActualTypeArguments().isEmpty()) {
@@ -2529,15 +3898,22 @@ public final class JavaToCpp {
         /** 対象 t に対するメンバー選択演算子を返す。計算量: O(1)。 */
         // 未テスト
         private String memberSeparator(CtExpression<?> t) {
-            if (t == null || t.getType() == null) return ".";
-            CtTypeReference<?> type = t.getType();
+            if (t == null) return ".";
+            CtTypeReference<?> type = (!t.getTypeCasts().isEmpty()) ? t.getTypeCasts().get(0) : t.getType();
+            if (type == null) return ".";
             return isDeclaredType(type) && !isRuntimeType(type.getSimpleName()) ? "->" : ".";
         }
 
         /** t が変換対象ソースで宣言された型なら true を返す。計算量: O(1)。 */
         // 未テスト
         private boolean isDeclaredType(CtTypeReference<?> t) {
+            if (t == null || t instanceof CtTypeParameterReference || t instanceof spoon.reflect.reference.CtWildcardReference) {
+                return false;
+            }
             String q = t.getQualifiedName();
+            if (q.startsWith("java.") || q.startsWith("javax.") || q.startsWith("jdk.") || q.startsWith("sun.")) {
+                return false;
+            }
             return declaredTypes.contains(t.getSimpleName()) || declaredTypes.contains(simpleName(t.getSimpleName()))
                     || declaredTypes.contains(q) || q.contains("$") && declaredTypes.contains(simpleName(q));
         }
@@ -2570,6 +3946,20 @@ public final class JavaToCpp {
         // 未テスト
         private String typeParameterName(CtTypeParameterReference p) {
             CtTypeParameter declaration = p.getDeclaration();
+            if (declaration != null && declaration.getParent(CtMethod.class) != null) {
+                return typeParameterName(declaration);
+            }
+            if (currentType != null) {
+                CtType<?> t = currentType;
+                while (t != null) {
+                    for (CtTypeParameter tp : t.getFormalCtTypeParameters()) {
+                        if (tp.getSimpleName().equals(p.getSimpleName())) {
+                            return typeParameterName(tp);
+                        }
+                    }
+                    t = t.getDeclaringType();
+                }
+            }
             return declaration == null ? id(p.getSimpleName()) : typeParameterName(declaration);
         }
 

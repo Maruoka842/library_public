@@ -427,6 +427,69 @@ public class LongValueGraph {
 		}
 		return true;
 	}
+
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな LongValueGraph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 * 辺の重み、多重辺、自己ループを含むすべての辺情報が各部分グラフに保持される。
+	 *
+	 * 計算量: O(N + M)
+	 *
+	 * @return 各連結成分を表す LongValueGraph の配列
+	 */
+	// 未テスト
+	public LongValueGraph[] connectedComponents() {
+		int[] color = new int[N];
+		Arrays.fill(color, -1);
+		Queue<Integer> que = new ArrayDeque<>();
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			if (color[i] != -1) continue;
+			que.add(i);
+			color[i] = k;
+			while (!que.isEmpty()) {
+				int v = que.poll();
+				for (Edge e : adj[v]) {
+					int u = e.dst;
+					if (color[u] != -1) continue;
+					color[u] = k;
+					que.add(u);
+				}
+			}
+			k++;
+		}
+		@SuppressWarnings("unchecked")
+		ArrayList<Integer>[] comps = new ArrayList[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[color[i]].add(i);
+		}
+		LongValueGraph[] res = new LongValueGraph[k];
+		int[] mapping = new int[N];
+		for (int c = 0; c < k; c++) {
+			ArrayList<Integer> comp = comps[c];
+			int sz = comp.size();
+			for (int i = 0; i < sz; i++) {
+				mapping[comp.get(i)] = i;
+			}
+			LongValueGraph g = new LongValueGraph(sz);
+			for (int u : comp) {
+				int newU = mapping[u];
+				for (Edge e : adj[u]) {
+					int v = e.dst;
+					if (u < v) {
+						g.addEdge(newU, mapping[v], e.cost);
+					} else if (u == v) {
+						g.adj[newU].add(new Edge(newU, newU, e.cost));
+						g.M++;
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
+	}
 	
 	
 	

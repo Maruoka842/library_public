@@ -1,4 +1,4 @@
-package library.util.graph;
+package library.util.graph.flow;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;

@@ -44,6 +44,12 @@ public class DFA {
 		adj[from][symbol] = to;
 	}
 	
+	/**
+	 * 遷移先未定義の場合-1
+	 * @param from
+	 * @param symbol
+	 * @return
+	 */
 	public int transite(int from, int symbol) {
 		return adj[from][symbol];
 	}
@@ -70,13 +76,9 @@ public class DFA {
 		int last = run(input);
 		return last != -1 && isAcceptable[last];
 	}
-	
+
 	public boolean isAcceptable(int v) {
 		return isAcceptable[v];
-	}
-	
-	public int next(int v, int symbol) {
-		return adj[v][symbol];
 	}
 	
 	/* 例：https://en.wikipedia.org/wiki/DFA_minimization#/media/File:DFA_to_be_minimized.svg

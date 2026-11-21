@@ -342,6 +342,58 @@ public class Itertools {
         	return current;
         }
     }
+    
+    
+    public static Iterable<char[]> product(char[] o, int repeat) {
+        return () -> new CharProductIterator(o, repeat);
+    }
+
+    static class CharProductIterator implements Iterator<char[]> {
+
+        private final char[] elements;
+        private final char[] current;
+        private final int[] currentByInts;
+
+        boolean first = true;
+
+        /**
+         * repeat=0のときは空文字列を返す。
+         */
+        public CharProductIterator(char[] o, int repeat) {
+            elements = o;
+            current = new char[repeat];
+            currentByInts = new int[repeat];
+            Arrays.fill(current, o[0]);
+            Arrays.fill(currentByInts, 0);
+        }
+
+        public boolean hasNext() {
+            if (first) return true;
+            int t = currentByInts.length - 1;
+            while (t >= 0 && currentByInts[t] == elements.length - 1) --t;
+            return t != -1;
+        }
+
+        public char[] next() {
+            if (first) {
+                first = false;
+                return current;
+            }
+
+            int t = currentByInts.length - 1;
+            while (t >= 0 && currentByInts[t] == elements.length - 1) --t;
+
+            currentByInts[t]++;
+            current[t] = elements[currentByInts[t]];
+
+            for (int i = t + 1; i < current.length; ++i) {
+                current[i] = elements[0];
+                currentByInts[i] = 0;
+            }
+
+            return current;
+        }
+    }
 
     public record Range(long lower, long upper) {
     }

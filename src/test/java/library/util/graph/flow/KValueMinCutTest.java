@@ -1,4 +1,4 @@
-package library.util.graph;
+package library.util.graph.flow;
 
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;

@@ -1,12 +1,12 @@
 package library.util.collections;
 
-import java.util.ArrayDeque;
-import java.util.Queue;
+import java.util.ArrayList;
+import java.util.List;
 
 public class TrieMap {
-	class Node {
+	public class Node {
 		int c;
-		int hit = 0;
+		boolean hit = false;
 		Node[] child = new Node[26];
 		long value;
 		
@@ -17,10 +17,104 @@ public class TrieMap {
 		public Node(int c) {
 			this.c = c;
 		}
+
+		/**
+		 * 添字 c に対応する子ノードを返す。
+		 * <p>計算量: O(1)。</p>
+		 * @param c 子ノードの添字
+		 * @return 子ノード。存在しない場合は null
+		 */
+		// 未テスト
+		public Node next(int c) {
+			return child[c];
+		}
+
+		/**
+		 * 添字 c に対応する子ノードを返し、存在しない場合は生成する。
+		 * <p>計算量: O(1)。</p>
+		 * @param c 子ノードの添字
+		 * @return 添字 c に対応する子ノード
+		 */
+		// 未テスト
+		public Node nextOrCreate(int c) {
+			if (child[c] == null) child[c] = new Node(c);
+			return child[c];
+		}
+		
+		public Node nextOrCreate(char c) {
+			return nextOrCreate(c-'a');
+		}
+
+		/**
+		 * このノードに値を設定し、対応するキーを登録する。未登録のキーの場合はkeyCount++される。
+		 * <p>計算量: O(1)。</p>
+		 * @param value 設定する値
+		 */
+		// 未テスト
+		public void setValue(long value) {
+			if (!hit) ++keyCount;
+			this.value = value;
+			hit = true;
+		}
+
+		/**
+		 * このノードに対応するキーの値を返す。
+		 * <p>計算量: O(1)。</p>
+		 * @return キーに設定された値
+		 * @throws AssertionError キーが登録されていない場合
+		 */
+		// 未テスト
+		public long getValue() {
+			if (!hit) throw new AssertionError();
+			return value;
+		}
+
+		/**
+		 * このノードに対応するキーの値を返し、キーが未登録なら defaultValue を返す。
+		 * <p>計算量: O(1)。</p>
+		 * @param defaultValue キーが未登録の場合に返す値
+		 * @return 登録値、または defaultValue
+		 */
+		// 未テスト
+		public long getOrDefault(long defaultValue) {
+			return hit ? value : defaultValue;
+		}
+
+		/**
+		 * このノードに値が設定されているかを返す。
+		 * <p>計算量: O(1)。</p>
+		 * @return 値が設定されていれば true
+		 */
+		// 未テスト
+		public boolean hasValue() {
+			return hit;
+		}
+
+		/**
+		 * このノードに対応するキーを削除する。
+		 * <p>計算量: O(1)。</p>
+		 * @return キーが登録されていて削除された場合は true、そうでなければ false
+		 */
+		// 未テスト
+		public boolean removeValue() {
+			if (!hit) return false;
+			hit = false;
+			--keyCount;
+			return true;
+		}
 	}
+	
+	public Node root() {
+		return root;
+	}
+
+	/** 登録済みキーの接頭辞に対応するノードとキー長。 */
+	public record Prefix(Node node, int length) {}
 	
 	
 	Node root = new Node('#');
+	// 登録されている相異なるキーの個数。
+	int keyCount = 0;
 
 	/**
 	 * トライ木を空にする。
@@ -29,9 +123,10 @@ public class TrieMap {
 	 */
 	public void clear() {
 		root = new Node('#');
+		keyCount = 0;
 	}
 	
-	public void add(char[] s, long value) {
+	public void put(char[] s, long value) {
 		int[] a=new int[s.length];
 		for(int i=0;i<s.length;++i)a[i]=s[i]-'a';
 		put(a, value);
@@ -40,13 +135,9 @@ public class TrieMap {
 	public void put(int[] s, long value) {
 		Node cur = root;
 		for (int i = 0; i < s.length; ++i) {
-			if (cur.child[s[i]] == null) {
-				cur.child[s[i]] = new Node(s[i]);
-			}
-			cur = cur.child[s[i]];
+			cur = cur.nextOrCreate(s[i]);
 		}
-		cur.hit++;
-		cur.value = value;
+		cur.setValue(value);
 	}
 	
 	public boolean contains(int[] s) {
@@ -55,7 +146,36 @@ public class TrieMap {
 			if (cur.child[s[i]] == null) return false;
 			cur = cur.child[s[i]];
 		}
-		return cur.hit > 0;
+		return cur.hit;
+	}
+
+	/**
+	 * 指定された配列のキーを削除する。
+	 * <p>計算量: O(|s|)</p>
+	 * @param s 削除するキー
+	 * @return キーが存在して削除された場合は true、存在しない場合は false
+	 */
+	// 未テスト
+	public boolean remove(int[] s) {
+		Node cur = root;
+		for (int c : s) {
+			if (c < 0 || c >= cur.child.length || cur.child[c] == null) return false;
+			cur = cur.child[c];
+		}
+		return cur.removeValue();
+	}
+
+	/**
+	 * 指定された文字配列のキーを削除する。
+	 * <p>計算量: O(|s|)</p>
+	 * @param s 削除するキー
+	 * @return キーが存在して削除された場合は true、存在しない場合は false
+	 */
+	// 未テスト
+	public boolean remove(char[] s) {
+		int[] a = new int[s.length];
+		for (int i = 0; i < s.length; ++i) a[i] = s[i] - 'a';
+		return remove(a);
 	}
 	
 	
@@ -65,7 +185,7 @@ public class TrieMap {
 			if (cur.child[s[i]-'a'] == null) throw new AssertionError();
 			cur = cur.child[s[i]-'a'];
 		}
-		return cur.value;
+		return cur.getValue();
 	}
 	
 	public long get(int[] s) {
@@ -74,7 +194,7 @@ public class TrieMap {
 			if (cur.child[s[i]] == null) throw new AssertionError();
 			cur = cur.child[s[i]];
 		}
-		return cur.value;
+		return cur.getValue();
 	}
 	
 	
@@ -83,24 +203,55 @@ public class TrieMap {
 		for(int i=0;i<s.length;++i)a[i]=s[i]-'a';
 		return contains(a);
 	}	
+
+	/**
+	 * a の接頭辞である登録済みキーに対応するノードと長さを、長さの昇順で列挙する。
+	 * <p>計算量: O(|a|)。</p>
+	 * @param a 接頭辞を調べる配列
+	 * @return a の接頭辞である登録済みキーのノードと長さ
+	 */
+	// 未テスト
+	public List<Prefix> prefixesOf(int[] a) {
+		List<Prefix> result = new ArrayList<>();
+		Node cur = root;
+		if (cur.hit) result.add(new Prefix(cur, 0));
+		for (int i = 0; i < a.length; ++i) {
+			int c = a[i];
+			if (c < 0 || c >= cur.child.length || cur.child[c] == null) break;
+			cur = cur.child[c];
+			if (cur.hit) result.add(new Prefix(cur, i + 1));
+		}
+		return result;
+	}
+
+	/**
+	 * a の接頭辞である登録済みキーに対応するノードと長さを、長さの昇順で列挙する。
+	 * <p>計算量: O(|a|)。</p>
+	 * @param a 接頭辞を調べる文字配列
+	 * @return a の接頭辞である登録済みキーのノードと長さ
+	 */
+	// 未テスト
+	public List<Prefix> prefixesOf(char[] a) {
+		//https://atcoder.jp/contests/abc377/submissions/80869421
+		List<Prefix> result = new ArrayList<>();
+		Node cur = root;
+		if (cur.hit) result.add(new Prefix(cur, 0));
+		for (int i = 0; i < a.length; ++i) {
+			int c = a[i] - 'a';
+			if (c < 0 || c >= cur.child.length || cur.child[c] == null) break;
+			cur = cur.child[c];
+			if (cur.hit) result.add(new Prefix(cur, i + 1));
+		}
+		return result;
+	}
 	
 	/**
-	 * 追加された相異なる文字列の個数を返す。
-	 * @return
+	 * 登録されている相異なるキーの個数を返す。
+	 * <p>計算量: O(1)</p>
+	 * @return 登録されている相異なるキーの個数
 	 */
 	public int size() {
-		int ret=0;
-		Queue<Node>que=new ArrayDeque<>();
-		que.add(root);
-		while(!que.isEmpty()) {
-			Node node=que.poll();
-			if(node.hit>0)++ret;
-			for(Node ch:node.child) {
-				if(ch==null)continue;
-				que.add(ch);
-			}
-		}
-		return ret;
+		return keyCount;
 	}
 
 	/**
@@ -123,7 +274,7 @@ public class TrieMap {
 		if (n1 == null || n2 == null) return false;
 		if (n1.c != n2.c) return false;
 		if (n1.hit != n2.hit) return false;
-		if (n1.hit > 0 && n1.value != n2.value) return false;
+		if (n1.hit && n1.value != n2.value) return false;
 		for (int i = 0; i < 26; i++) {
 			if (!equals(n1.child[i], n2.child[i])) return false;
 		}
@@ -144,8 +295,8 @@ public class TrieMap {
 	private int hashCode(Node node) {
 		if (node == null) return 0;
 		int h = Integer.hashCode(node.c);
-		h = 31 * h + Integer.hashCode(node.hit);
-		if (node.hit > 0) {
+		h = 31 * h + Boolean.hashCode(node.hit);
+		if (node.hit) {
 			h = 31 * h + Long.hashCode(node.value);
 		}
 		for (int i = 0; i < 26; i++) {

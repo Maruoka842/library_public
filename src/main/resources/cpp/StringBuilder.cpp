@@ -1,6 +1,9 @@
 struct JStringBuilder {
     JString value;
     JStringBuilder() = default;
+    // 未テスト
+    // 計算量: O(capacity)
+    explicit JStringBuilder(size_t capacity) { value.reserve(capacity); }
     explicit JStringBuilder(const JString& initial) : value(initial) {}
     template<class T> JStringBuilder& append(const T& x) { value += jstr(x); return *this; }
     JStringBuilder& appendCodePoint(int cp) { value += static_cast<char>(cp); return *this; }

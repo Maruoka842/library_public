@@ -2,8 +2,11 @@ package library.util.graph;
 
 import java.awt.Component;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.List;
 import java.util.Map;
 import java.util.Set;
 
@@ -16,15 +19,15 @@ import org.graphstream.ui.view.Viewer;
 
 import library.util.collections.IntQueue;
 
-public class SparseGraph{
+public class HashGraph{
 	private Map<Integer, Set<Integer>> adj;
 	private static int drawCount = 0; // 呼び出しカウンタ
 	
-	public SparseGraph() {
+	public HashGraph() {
 		adj = new HashMap<>();
 	}
 
-	public SparseGraph(int N) {
+	public HashGraph(int N) {
 		adj = new HashMap<>();
 		for (int i = 0; i < N; i++) {
 			adj.put(i, new HashSet<>());
@@ -99,8 +102,8 @@ public class SparseGraph{
 		removeVertex(remove);
 	}
 	
-	public SparseGraph copy() {
-		SparseGraph g=new SparseGraph();
+	public HashGraph copy() {
+		HashGraph g=new HashGraph();
 		for(int v:adj.keySet()) {
 			g.adj.put(v, new HashSet<>());
 			
@@ -204,5 +207,69 @@ public class SparseGraph{
 				frame.setTitle(graphName);
 			}
 		});
+	}
+
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな HashGraph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 *
+	 * 計算量: O(N + M) 平均
+	 *
+	 * @return 各連結成分を表す HashGraph の配列
+	 */
+	// 未テスト
+	public HashGraph[] connectedComponents() {
+		Set<Integer> visited = new HashSet<>();
+		List<List<Integer>> comps = new ArrayList<>();
+		List<Integer> allVertices = new ArrayList<>(adj.keySet());
+		Collections.sort(allVertices);
+		for (int s : allVertices) {
+			if (visited.contains(s)) continue;
+			List<Integer> comp = new ArrayList<>();
+			ArrayDeque<Integer> q = new ArrayDeque<>();
+			q.add(s);
+			visited.add(s);
+			while (!q.isEmpty()) {
+				int v = q.poll();
+				comp.add(v);
+				Set<Integer> nbrs = adj.get(v);
+				if (nbrs != null) {
+					for (int u : nbrs) {
+						if (!visited.contains(u)) {
+							visited.add(u);
+							q.add(u);
+						}
+					}
+				}
+			}
+			comps.add(comp);
+		}
+		int k = comps.size();
+		HashGraph[] res = new HashGraph[k];
+		for (int c = 0; c < k; c++) {
+			List<Integer> comp = comps.get(c);
+			int sz = comp.size();
+			Map<Integer, Integer> mapping = new HashMap<>();
+			for (int i = 0; i < sz; i++) {
+				mapping.put(comp.get(i), i);
+			}
+			HashGraph g = new HashGraph(sz);
+			for (int u : comp) {
+				int newU = mapping.get(u);
+				Set<Integer> nbrs = adj.get(u);
+				if (nbrs != null) {
+					for (int v : nbrs) {
+						if (u < v) {
+							g.addEdge(newU, mapping.get(v));
+						} else if (u == v) {
+							g.addEdge(newU, newU);
+						}
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
 	}
 }

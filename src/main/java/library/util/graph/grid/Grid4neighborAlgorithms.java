@@ -366,6 +366,107 @@ public final class Grid4neighborAlgorithms {
     }
 
     /**
+     * ゼロ重み辺を含まない頂点重み付き4近傍グリッドの Dijkstra 距離配列から最短路を一つ復元する。
+     * 各遷移 (u, v) は dist[u] + weight[v] = dist[v] を満たし、パスのコストは始点を含む。
+     * 距離条件を満たす前駆セルをたどる。ゼロ重みでも前駆セルを特定できれば復元する。
+     *
+     * @param dist {@link #dijkstra(int, int, long[][], int, int)} が返した距離配列
+     * @param weight dijkstra に渡した頂点重み
+     * @param si 始点の行インデックス
+     * @param sj 始点の列インデックス
+     * @param ti 終点の行インデックス
+     * @param tj 終点の列インデックス
+     * @return 始点と終点を含む最短路上の座標 [r, c] の配列。復元できない場合は null
+     * @throws IllegalStateException 距離条件を満たす未訪問の前駆セルがない場合
+     * @complexity O(L)（L は返すパスに含まれるマス数）
+     */
+    // 未テスト
+    public static int[][] restoreShortestPathWithoutZeroEdge(long[][] dist, long[][] weight, int si, int sj, int ti, int tj) {
+        if (dist == null || weight == null || dist.length == 0 || weight.length != dist.length) return null;
+        int R = dist.length;
+        int C = dist[0] == null ? 0 : dist[0].length;
+        if (C == 0 || weight[0] == null || weight[0].length != C) return null;
+        if (si < 0 || si >= R || sj < 0 || sj >= C || ti < 0 || ti >= R || tj < 0 || tj >= C
+                || dist[si][sj] != weight[si][sj] || dist[ti][tj] == Long.MAX_VALUE) return null;
+        java.util.ArrayList<int[]> reversed = new java.util.ArrayList<>();
+        java.util.HashSet<Long> visited = new java.util.HashSet<>();
+        int r = ti, c = tj;
+        while (true) {
+            reversed.add(new int[]{r, c});
+            if (r == si && c == sj) break;
+            visited.add((long) r * C + c);
+            int bestR = -1, bestC = -1;
+            long bestDist = Long.MAX_VALUE;
+            for (int dir = 0; dir < 4; dir++) {
+                int nr = r + dh[dir], nc = c + dw[dir];
+                if (nr < 0 || nr >= R || nc < 0 || nc >= C || dist[nr] == null || weight[nr] == null
+                        || nc >= dist[nr].length || nc >= weight[nr].length || dist[nr][nc] == Long.MAX_VALUE
+                        || weight[r][c] > Long.MAX_VALUE - dist[nr][nc]
+                        || dist[nr][nc] + weight[r][c] != dist[r][c]
+                        || visited.contains((long) nr * C + nc)) continue;
+                if (bestR < 0 || dist[nr][nc] < bestDist) {
+                    bestDist = dist[nr][nc]; bestR = nr; bestC = nc;
+                }
+            }
+            if (bestR < 0) throw new IllegalStateException("shortest path cannot be restored");
+            r = bestR; c = bestC;
+        }
+        int[][] path = new int[reversed.size()][2];
+        for (int k = 0; k < path.length; k++) path[k] = reversed.get(path.length - 1 - k);
+        return path;
+    }
+
+    /**
+     * {@link #restoreShortestPathWithoutZeroEdge(long[][], long[][], int, int, int, int)} の int 重み版。
+     * 復元中にゼロ重みを検出した場合は IllegalArgumentException を投げる。
+     *
+     * @param dist dijkstra が返した距離配列
+     * @param weight dijkstra に渡した頂点重み
+     * @param si 始点の行インデックス
+     * @param sj 始点の列インデックス
+     * @param ti 終点の行インデックス
+     * @param tj 終点の列インデックス
+     * @return 始点と終点を含む最短路上の座標 [r, c] の配列。復元できない場合は null
+     * @throws IllegalStateException 距離条件を満たす未訪問の前駆セルがない場合
+     * @complexity O(L)（L は返すパスに含まれるマス数）
+     */
+    // 未テスト
+    public static int[][] restoreShortestPathWithoutZeroEdge(long[][] dist, int[][] weight, int si, int sj, int ti, int tj) {
+        if (dist == null || weight == null || dist.length == 0 || weight.length != dist.length) return null;
+        int R = dist.length;
+        int C = dist[0] == null ? 0 : dist[0].length;
+        if (C == 0 || weight[0] == null || weight[0].length != C) return null;
+        if (si < 0 || si >= R || sj < 0 || sj >= C || ti < 0 || ti >= R || tj < 0 || tj >= C
+                || dist[si][sj] != weight[si][sj] || dist[ti][tj] == Long.MAX_VALUE) return null;
+        java.util.ArrayList<int[]> reversed = new java.util.ArrayList<>();
+        java.util.HashSet<Long> visited = new java.util.HashSet<>();
+        int r = ti, c = tj;
+        while (true) {
+            reversed.add(new int[]{r, c});
+            if (r == si && c == sj) break;
+            visited.add((long) r * C + c);
+            int bestR = -1, bestC = -1;
+            long bestDist = Long.MAX_VALUE;
+            for (int dir = 0; dir < 4; dir++) {
+                int nr = r + dh[dir], nc = c + dw[dir];
+                if (nr < 0 || nr >= R || nc < 0 || nc >= C || dist[nr] == null || weight[nr] == null
+                        || nc >= dist[nr].length || nc >= weight[nr].length || dist[nr][nc] == Long.MAX_VALUE
+                        || weight[r][c] > Long.MAX_VALUE - dist[nr][nc]
+                        || dist[nr][nc] + weight[r][c] != dist[r][c]
+                        || visited.contains((long) nr * C + nc)) continue;
+                if (bestR < 0 || dist[nr][nc] < bestDist) {
+                    bestDist = dist[nr][nc]; bestR = nr; bestC = nc;
+                }
+            }
+            if (bestR < 0) throw new IllegalStateException("shortest path cannot be restored");
+            r = bestR; c = bestC;
+        }
+        int[][] path = new int[reversed.size()][2];
+        for (int k = 0; k < path.length; k++) path[k] = reversed.get(path.length - 1 - k);
+        return path;
+    }
+
+    /**
      * マス (r, c) から方向 dir への移動における辺の重み（0 または 1）を取得する。
      * dir は Grid2D (0: 下, 1: 右, 2: 上, 3: 左) に対応する。
      *
@@ -904,7 +1005,7 @@ public final class Grid4neighborAlgorithms {
      * 初期状態は始点 (si, sj) からある方向に移動を開始しているとして、
      * すべての移動開始方向に対して距離を 1 とする。
      * また、止まった位置で方向転換をするごとに距離が 1 増加する。
-     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -941,7 +1042,7 @@ public final class Grid4neighborAlgorithms {
         }
         ArrayDeque<int[]> dq = new ArrayDeque<>();
         int[][][] dist = new int[4][R][C];
-        int INF = Integer.MAX_VALUE / 3;
+        int INF = Integer.MAX_VALUE;
         ArrayUtils.fill(dist, INF);
         if (si < 0 || si >= R || sj < 0 || sj >= C) {
             return dist;
@@ -983,7 +1084,7 @@ public final class Grid4neighborAlgorithms {
 
     /**
      * 始点 (si, sj) からの滑る床（icefloor）上での最短距離を01-BFSにより計算する。
-     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1060,14 +1161,6 @@ public final class Grid4neighborAlgorithms {
         return findShortestPath(R, C, null, null, isObstacle, si, sj, ti, tj, null);
     }
 
-    public static int[][] findPath(int R, int C, int si, int sj, int ti, int tj, java.util.Random rnd) {
-        return findShortestPath(R, C, null, null, null, si, sj, ti, tj, rnd);
-    }
-
-    public static int[][] findPath(int R, int C, int si, int sj, int ti, int tj) {
-        return findShortestPath(R, C, null, null, null, si, sj, ti, tj, null);
-    }
-
     public static int[][] findPath(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown,
             boolean[][] isObstacle, int[][] sources, int[][] targets, java.util.Random rnd) {
         return findPath01(R, C, blockedRight, blockedDown, isObstacle, (int[][][]) null, sources, targets, rnd);
@@ -1130,7 +1223,7 @@ public final class Grid4neighborAlgorithms {
         if (ti < 0 || ti >= R || tj < 0 || tj >= C) {
             return null;
         }
-        int minDist = Integer.MAX_VALUE / 3;
+        int minDist = Integer.MAX_VALUE;
         int targetDir = -1;
         for (int dir = 0; dir < 4; dir++) {
             if (dist[dir][ti][tj] < minDist) {
@@ -1138,7 +1231,7 @@ public final class Grid4neighborAlgorithms {
                 targetDir = dir;
             }
         }
-        if (minDist == Integer.MAX_VALUE / 3) {
+        if (minDist == Integer.MAX_VALUE) {
             return null;
         }
 
@@ -1220,7 +1313,7 @@ public final class Grid4neighborAlgorithms {
      * 初期状態は始点 (si, sj) からある方向に移動を開始しているとして、
      * すべての移動開始方向に対して距離を 1 とする。
      * また、任意のマスで停止して方向転換をするごとに距離が 1 増加する。
-     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1236,7 +1329,7 @@ public final class Grid4neighborAlgorithms {
     public static int[][][] bfsIcefloorWithStopping(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown, boolean[][] isObstacle, int si, int sj) {
         ArrayDeque<int[]> dq = new ArrayDeque<>();
         int[][][] dist = new int[4][R][C];
-        int INF = Integer.MAX_VALUE / 3;
+        int INF = Integer.MAX_VALUE;
         ArrayUtils.fill(dist, INF);
         if (si < 0 || si >= R || sj < 0 || sj >= C) {
             return dist;
@@ -1280,7 +1373,7 @@ public final class Grid4neighborAlgorithms {
 
     /**
      * 始点 (si, sj) からの、スライドの途中（任意のマスの境界）で停止して方向転換することが可能な滑る床上での最短距離を01-BFSにより計算する。
-     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1319,7 +1412,7 @@ public final class Grid4neighborAlgorithms {
         if (ti < 0 || ti >= R || tj < 0 || tj >= C) {
             return null;
         }
-        int minDist = Integer.MAX_VALUE / 3;
+        int minDist = Integer.MAX_VALUE;
         int targetDir = -1;
         for (int dir = 0; dir < 4; dir++) {
             if (dist[dir][ti][tj] < minDist) {
@@ -1327,7 +1420,7 @@ public final class Grid4neighborAlgorithms {
                 targetDir = dir;
             }
         }
-        if (minDist == Integer.MAX_VALUE / 3) {
+        if (minDist == Integer.MAX_VALUE) {
             return null;
         }
 
@@ -1399,8 +1492,8 @@ public final class Grid4neighborAlgorithms {
     /**
      * 始点 (si, sj) から各マスへの最短距離を頂点重み付きダイクストラ法により計算する。
      * 壁（blockedRight, blockedDown）による通行不能および頂点重み（weight）を考慮する。
-     * 頂点重みが Long.MAX_VALUE / 2 以上（または負の値）のマスは障害物（通行不能）として扱う。
-     * 到達不能なマスの最短距離は Long.MAX_VALUE / 2 となる。
+     * 頂点重みが Long.MAX_VALUEのマスは障害物（通行不能）として扱う。
+     * 到達不能なマスの最短距離は Long.MAX_VALUE となる。
      * 始点 (si, sj) 自身の頂点重み weight[si][sj] も初期距離として加算される。
      *
      * 頂点重み付き最短経路の性質により、ある頂点に最初に到達した時点でその距離が確定するため、
@@ -1420,12 +1513,17 @@ public final class Grid4neighborAlgorithms {
     // 未テスト
     public static long[][] dijkstra(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown, long[][] weight, int si, int sj) {
         long[][] dist = new long[R][C];
-        long INF = Long.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
         ArrayUtils.fill(dist, INF);
+        if (weight != null) {
+            for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) {
+                if (weight[r][c] < 0) throw new IllegalArgumentException("weight must be non-negative");
+            }
+        }
         if (si < 0 || si >= R || sj < 0 || sj >= C || weight == null) {
             return dist;
         }
-        if (weight[si][sj] >= INF || weight[si][sj] < 0) {
+        if (weight[si][sj] >= INF) {
             return dist;
         }
 
@@ -1444,10 +1542,11 @@ public final class Grid4neighborAlgorithms {
                 if (canMove(r, c, dir, R, C, blockedRight, blockedDown, null)) {
                     int nr = r + dh[dir];
                     int nc = c + dw[dir];
-                    if (weight[nr][nc] >= INF || weight[nr][nc] < 0) {
+                    if (weight[nr][nc] >= INF) {
                         continue;
                     }
-                    if (dist[r][c] + weight[nr][nc] < dist[nr][nc]) {
+                    if (dist[r][c] <= Long.MAX_VALUE - weight[nr][nc]
+                            && dist[r][c] + weight[nr][nc] < dist[nr][nc]) {
                         dist[nr][nc] = dist[r][c] + weight[nr][nc];
                         pq.add(new long[]{dist[nr][nc], nr, nc});
                     }
@@ -1460,7 +1559,7 @@ public final class Grid4neighborAlgorithms {
     /**
      * 始点 (si, sj) から各マスへの最短距離を頂点重み付きダイクストラ法により計算する。
      * 頂点重み（weight）を考慮する。
-     * 到達不能なマスの最短距離は Long.MAX_VALUE / 2 となる。
+     * 到達不能なマスの最短距離は Long.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1478,7 +1577,7 @@ public final class Grid4neighborAlgorithms {
     /**
      * 始点 (si, sj) から各マスへの最短距離を頂点重み付きダイクストラ法により計算する。
      * 壁（blockedRight, blockedDown）による通行不能および頂点重み（weight）を考慮する。
-     * 到達不能なマスの最短距離は Long.MAX_VALUE / 2 となる。
+     * 到達不能なマスの最短距離は Long.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1495,12 +1594,13 @@ public final class Grid4neighborAlgorithms {
         if (weight == null) {
             return dijkstra(R, C, blockedRight, blockedDown, (long[][]) null, si, sj);
         }
-        long INF = Long.MAX_VALUE / 2;
-        int INT_INF = Integer.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
+        int INT_INF = Integer.MAX_VALUE;
         long[][] wLong = new long[R][C];
         for (int i = 0; i < R; i++) {
             for (int j = 0; j < C; j++) {
-                if (weight[i][j] >= INT_INF || weight[i][j] < 0) {
+                if (weight[i][j] < 0) throw new IllegalArgumentException("weight must be non-negative");
+                if (weight[i][j] >= INT_INF) {
                     wLong[i][j] = INF;
                 } else {
                     wLong[i][j] = weight[i][j];
@@ -1513,7 +1613,7 @@ public final class Grid4neighborAlgorithms {
     /**
      * 始点 (si, sj) から各マスへの最短距離を頂点重み付きダイクストラ法により計算する。
      * 頂点重み（weight）を考慮する。
-     * 到達不能なマスの最短距離は Long.MAX_VALUE / 2 となる。
+     * 到達不能なマスの最短距離は Long.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -1526,6 +1626,119 @@ public final class Grid4neighborAlgorithms {
     // 未テスト
     public static long[][] dijkstra(int R, int C, int[][] weight, int si, int sj) {
         return dijkstra(R, C, null, null, weight, si, sj);
+    }
+
+    /**
+     * 頂点重み付き4近傍グリッドの全点対最短距離をワーシャルフロイド法で求める。
+     * 経路のコストは通過する全頂点の重みの和とし、始点と終点の重みを含む。
+     * weight[r][c] が Long.MAX_VALUE のマスは通行不能とする。
+     * weight に負の値が含まれる場合は IllegalArgumentException を投げる。
+     * 壁（blockedRight, blockedDown）を越える遷移も禁止する。到達不能または
+     * Long.MAX_VALUE を超える経路の距離は Long.MAX_VALUE とする。
+     *
+     * @param R 行数
+     * @param C 列数
+     * @param blockedRight 隣接列間の壁情報（null の場合は壁なし）
+     * @param blockedDown 隣接行間の壁情報（null の場合は壁なし）
+     * @param weight 各マスの頂点重みを表す R x C 配列
+     * @return dist[r1*C+c1][r2*C+c2] が (r1,c1) から (r2,c2) への最短距離である (R*C) x (R*C) 配列
+     * @complexity O((R*C)^3) 時間、O((R*C)^2) 空間
+     */
+    // 未テスト
+    public static long[][] warshalFloyd(boolean[][] blockedRight, boolean[][] blockedDown, long[][] weight) {
+        if (weight == null) throw new IllegalArgumentException("weight must not be null");
+        int R = weight.length;
+        int C = R == 0 ? 0 : weight[0].length;
+        int n = R * C;
+        long inf = Long.MAX_VALUE;
+        long[][] dist = new long[n][n];
+        ArrayUtils.fill(dist, inf);
+
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) {
+            if (weight[r][c] < 0) throw new IllegalArgumentException("weight must be non-negative");
+        }
+
+        for (int r = 0; r < R; r++) {
+            for (int c = 0; c < C; c++) {
+                int v = r * C + c;
+                long w = weight[r][c];
+                if (w == inf) continue;
+                dist[v][v] = w;
+                for (int dir = 0; dir < 4; dir++) {
+                    if (!canMove(r, c, dir, R, C, blockedRight, blockedDown, null)) continue;
+                    int nr = r + dh[dir], nc = c + dw[dir];
+                    long nw = weight[nr][nc];
+                    if (nw == inf || w > Long.MAX_VALUE - nw) continue;
+                    dist[v][nr * C + nc] = Math.min(dist[v][nr * C + nc], w + nw);
+                }
+            }
+        }
+        for (int k = 0; k < n; k++) {
+            for (int i = 0; i < n; i++) {
+                if (dist[i][k] == inf) continue;
+                for (int j = 0; j < n; j++) {
+                    if (dist[k][j] == inf || dist[i][k] > Long.MAX_VALUE - dist[k][j]) continue;
+                    dist[i][j] = Math.min(dist[i][j], dist[i][k] + dist[k][j] - weight[k / C][k % C]);
+                }
+            }
+        }
+        return dist;
+    }
+
+    /**
+     * 頂点重み付き4近傍グリッドの全点対最短距離を求める。
+     * 経路コストは始点と終点を含む通過頂点重みの和であり、到達不能時は Long.MAX_VALUE。
+     *
+     * @param weight 各マスの頂点重みを表す R x C 配列
+     * @return dist[r1*C+c1][r2*C+c2] が各マス間の最短距離である配列
+     * @complexity O((R*C)^3) 時間、O((R*C)^2) 空間
+     */
+    // 未テスト
+    public static long[][] warshalFloyd(long[][] weight) {
+        return warshalFloyd(null, null, weight);
+    }
+
+    /**
+     * 頂点重み付き4近傍グリッドの全点対最短距離を求める。
+     * 経路コストは始点と終点を含む通過頂点重みの和であり、Integer.MAX_VALUE の重みは通行不能。
+     *
+     * @param R 行数
+     * @param C 列数
+     * @param blockedRight 隣接列間の壁情報（null の場合は壁なし）
+     * @param blockedDown 隣接行間の壁情報（null の場合は壁なし）
+     * @param weight 各マスの頂点重みを表す R x C 配列
+     * @return dist[r1*C+c1][r2*C+c2] が各マス間の最短距離である配列
+     * @complexity O((R*C)^3) 時間、O((R*C)^2) 空間
+     */
+    // 未テスト
+    public static long[][] warshalFloyd(boolean[][] blockedRight, boolean[][] blockedDown, int[][] weight) {
+        if (weight == null) throw new IllegalArgumentException("weight must not be null");
+        int R = weight.length;
+        int C = R == 0 ? 0 : weight[0].length;
+        long[][] converted = new long[R][C];
+        int obstacle = Integer.MAX_VALUE;
+        for (int r = 0; r < R; r++) {
+            for (int c = 0; c < C; c++) {
+                if (weight[r][c] < 0) throw new IllegalArgumentException("weight must be non-negative");
+                converted[r][c] = weight[r][c] >= obstacle ? Long.MAX_VALUE : weight[r][c];
+            }
+        }
+        return warshalFloyd(blockedRight, blockedDown, converted);
+    }
+
+    /**
+     * 頂点重み付き4近傍グリッドの全点対最短距離を求める。
+     * 経路コストは始点と終点を含む通過頂点重みの和であり、Integer.MAX_VALUE の重みは通行不能。
+     *
+     * @param R 行数
+     * @param C 列数
+     * @param weight 各マスの頂点重みを表す R x C 配列
+     * @return dist[r1*C+c1][r2*C+c2] が各マス間の最短距離である配列
+     * @complexity O((R*C)^3) 時間、O((R*C)^2) 空間
+     */
+    // 未テスト
+    public static long[][] warshalFloyd(int[][] weight) {
+        return warshalFloyd(null, null, weight);
     }
 
 
@@ -1549,7 +1762,7 @@ public final class Grid4neighborAlgorithms {
     // 未テスト
     public static int[][] findPath(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown, long[][] weight, int si, int sj, int ti, int tj) {
         long[][] dist = dijkstra(R, C, blockedRight, blockedDown, weight, si, sj);
-        long INF = Long.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
         if (ti < 0 || ti >= R || tj < 0 || tj >= C || dist[ti][tj] >= INF) {
             return null;
         }
@@ -1566,7 +1779,8 @@ public final class Grid4neighborAlgorithms {
                 int prevC = currC - dw[dir];
                 if (prevR >= 0 && prevR < R && prevC >= 0 && prevC < C) {
                     if (canMove(prevR, prevC, dir, R, C, blockedRight, blockedDown, null)) {
-                        if (dist[prevR][prevC] + weight[currR][currC] == dist[currR][currC]) {
+                        if (dist[prevR][prevC] <= Long.MAX_VALUE - weight[currR][currC]
+                                && dist[prevR][prevC] + weight[currR][currC] == dist[currR][currC]) {
                             currR = prevR;
                             currC = prevC;
                             pathList.add(new int[]{currR, currC});
@@ -1620,7 +1834,7 @@ public final class Grid4neighborAlgorithms {
      * @param C 列数
      * @param blockedRight R x (C - 1) 配列。null の場合は垂直壁なし
      * @param blockedDown (R - 1) x C 配列。null の場合は水平壁なし
-     * @param weight 各マスの頂点重み。負または Long.MAX_VALUE / 2 以上のマスは通行不能
+     * @param weight 各マスの頂点重み。Long.MAX_VALUE のマスは通行不能
      * @param sources 始点座標 [r, c] の配列
      * @param targets 終点座標 [r, c] の配列
      * @return 始点と終点を含む最小コストパス上の座標 [r, c] の配列。到達不能時は null
@@ -1630,11 +1844,14 @@ public final class Grid4neighborAlgorithms {
     public static int[][] findPath(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown,
             long[][] weight, int[][] sources, int[][] targets) {
         if (R <= 0 || C <= 0 || weight == null || sources == null || targets == null) return null;
-        long INF = Long.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
         long[][] dist = new long[R][C];
         int[][] parent = new int[R][C];
         ArrayUtils.fill(dist, INF);
         ArrayUtils.fill(parent, -2);
+        for (int r = 0; r < R; r++) for (int c = 0; c < C; c++) {
+            if (weight[r][c] < 0) throw new IllegalArgumentException("weight must be non-negative");
+        }
         PriorityQueue<long[]> queue = new PriorityQueue<>((a, b) -> Long.compare(a[0], b[0]));
 
         for (int[] source : sources) {
@@ -1642,7 +1859,7 @@ public final class Grid4neighborAlgorithms {
             int r = source[0];
             int c = source[1];
             if (r < 0 || r >= R || c < 0 || c >= C
-                    || weight[r][c] < 0 || weight[r][c] >= INF || weight[r][c] >= dist[r][c]) continue;
+                    || weight[r][c] >= INF || weight[r][c] >= dist[r][c]) continue;
             dist[r][c] = weight[r][c];
             parent[r][c] = -1;
             queue.add(new long[]{dist[r][c], r, c});
@@ -1659,7 +1876,7 @@ public final class Grid4neighborAlgorithms {
                 int nr = r + dh[dir];
                 int nc = c + dw[dir];
                 long w = weight[nr][nc];
-                if (w < 0 || w >= INF) continue;
+                if (w >= INF) continue;
                 long nextDistance = distance > INF - w ? INF : distance + w;
                 if (nextDistance >= dist[nr][nc]) continue;
                 dist[nr][nc] = nextDistance;
@@ -1700,7 +1917,7 @@ public final class Grid4neighborAlgorithms {
      *
      * @param R 行数
      * @param C 列数
-     * @param weight 各マスの頂点重み。負または Long.MAX_VALUE / 2 以上のマスは通行不能
+     * @param weight 各マスの頂点重み。Long.MAX_VALUE のマスは通行不能
      * @param sources 始点座標 [r, c] の配列
      * @param targets 終点座標 [r, c] の配列
      * @return 始点と終点を含む最小コストパス上の座標 [r, c] の配列。到達不能時は null
@@ -1733,12 +1950,13 @@ public final class Grid4neighborAlgorithms {
         if (weight == null) {
             return findPath(R, C, blockedRight, blockedDown, (long[][]) null, si, sj, ti, tj);
         }
-        long INF = Long.MAX_VALUE / 2;
-        int INT_INF = Integer.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
+        int INT_INF = Integer.MAX_VALUE;
         long[][] wLong = new long[R][C];
         for (int i = 0; i < R; i++) {
             for (int j = 0; j < C; j++) {
-                if (weight[i][j] >= INT_INF || weight[i][j] < 0) {
+                if (weight[i][j] < 0) throw new IllegalArgumentException("weight must be non-negative");
+                if (weight[i][j] >= INT_INF) {
                     wLong[i][j] = INF;
                 } else {
                     wLong[i][j] = weight[i][j];
@@ -1771,7 +1989,8 @@ public final class Grid4neighborAlgorithms {
     /**
      * 始点集合 S と終点集合 T の間で頂点重みの総和が最小となる4近傍パスを一つ返す。
      * パス P のコストは sum_{v in P} weight[v] とし、始点と終点の重みも含む。
-     * 負または Integer.MAX_VALUE / 2 以上の重みを持つマスは通行不能とする。
+     * Integer.MAX_VALUE の重みを持つマスは通行不能とする。
+     * weight に負の値が含まれる場合は IllegalArgumentException を投げる。
      *
      * @param R 行数
      * @param C 列数
@@ -1787,12 +2006,13 @@ public final class Grid4neighborAlgorithms {
     public static int[][] findPath(int R, int C, boolean[][] blockedRight, boolean[][] blockedDown,
             int[][] weight, int[][] sources, int[][] targets) {
         if (weight == null) return findPath(R, C, blockedRight, blockedDown, (long[][]) null, sources, targets);
-        long INF = Long.MAX_VALUE / 2;
-        int INT_INF = Integer.MAX_VALUE / 2;
+        long INF = Long.MAX_VALUE;
+        int INT_INF = Integer.MAX_VALUE;
         long[][] longWeight = new long[R][C];
         for (int r = 0; r < R; r++) {
             for (int c = 0; c < C; c++) {
-                longWeight[r][c] = weight[r][c] < 0 || weight[r][c] >= INT_INF ? INF : weight[r][c];
+                if (weight[r][c] < 0) throw new IllegalArgumentException("weight must be non-negative");
+                longWeight[r][c] = weight[r][c] >= INT_INF ? INF : weight[r][c];
             }
         }
         return findPath(R, C, blockedRight, blockedDown, longWeight, sources, targets);
@@ -1803,7 +2023,7 @@ public final class Grid4neighborAlgorithms {
      *
      * @param R 行数
      * @param C 列数
-     * @param weight 各マスの頂点重み。負または Integer.MAX_VALUE / 2 以上のマスは通行不能
+     * @param weight 各マスの頂点重み。Integer.MAX_VALUE のマスは通行不能
      * @param sources 始点座標 [r, c] の配列
      * @param targets 終点座標 [r, c] の配列
      * @return 始点と終点を含む最小コストパス上の座標 [r, c] の配列。到達不能時は null
@@ -2288,7 +2508,7 @@ public final class Grid4neighborAlgorithms {
      * 状態空間は (dir, r, c) であり、方向転換（90度ごとにコスト1）および移動（1マスごとにコスト1）のすべての遷移コストは 1 である。
      * initialDir が -1 の場合は任意の初期方向を選択可能であり、初期状態のコストは 0 とする。
      * 0 <= initialDir < 4 の場合は指定された初期方向のコストを 0 とする。
-     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE / 3 となる。
+     * 到達不能なマスの状態に対する距離は Integer.MAX_VALUE となる。
      *
      * @param R 行数
      * @param C 列数
@@ -2326,7 +2546,7 @@ public final class Grid4neighborAlgorithms {
             }
         }
         int[][][] dist = new int[4][R][C];
-        int INF = Integer.MAX_VALUE / 3;
+        int INF = Integer.MAX_VALUE;
         ArrayUtils.fill(dist, INF);
         if (si < 0 || si >= R || sj < 0 || sj >= C) {
             return dist;
@@ -2402,7 +2622,7 @@ public final class Grid4neighborAlgorithms {
         if (ti < 0 || ti >= R || tj < 0 || tj >= C) {
             return null;
         }
-        int INF = Integer.MAX_VALUE / 3;
+        int INF = Integer.MAX_VALUE;
         int bestCost = INF;
         java.util.ArrayList<Integer> bestDirs = new java.util.ArrayList<>();
         for (int dir = 0; dir < 4; dir++) {

@@ -1,3 +1,5 @@
+template<class T> struct JSet;
+template<class K, class V> struct JMap;
 struct JCollections {
     static auto reverseOrder() {
         return [](const auto& a, const auto& b) { return a < b ? 1 : (a > b ? -1 : 0); };
@@ -5,16 +7,16 @@ struct JCollections {
     template<class Comp> static auto reverseOrder(Comp comp) {
         return [comp](const auto& a, const auto& b) { return comp(b, a); };
     }
-    template<class C> static void sort(C& c) { std::sort(c.begin(), c.end()); }
+    template<class C> static void sort(C& c) { std::stable_sort(c.begin(), c.end(), jless_fn); }
     template<class C, class Comp> static void sort(C& c, Comp comp) {
         if constexpr (is_same_v<decay_t<Comp>, nullptr_t>) {
-            std::sort(c.begin(), c.end());
+            std::stable_sort(c.begin(), c.end(), jless_fn);
         } else {
-            std::sort(c.begin(), c.end(), [&](const auto& a, const auto& b) { return comp(a, b) < 0; });
+            std::stable_sort(c.begin(), c.end(), [&](const auto& a, const auto& b) { return comp(a, b) < 0; });
         }
     }
     template<class C> static void sort(C& c, nullptr_t) {
-        std::sort(c.begin(), c.end());
+        std::stable_sort(c.begin(), c.end(), jless_fn);
     }
     template<class T> static vector<T> singleton(const T& x) { return {x}; }
     template<class T> static vector<T> singletonList(const T& x) { return {x}; }
@@ -23,10 +25,10 @@ struct JCollections {
     template<class T> static vector<T> emptyList() { return {}; }
     // 未テスト
     // 計算量: O(1)
-    template<class T> static JSet<T> emptySet() { return {}; }
+    template<class T> static auto emptySet() { return JSet<T>{}; }
     // 未テスト
     // 計算量: O(1)
-    template<class K, class V> static JMap<K, V> emptyMap() { return {}; }
+    template<class K, class V> static auto emptyMap() { return JMap<K, V>{}; }
     template<class C> static void reverse(C& c) { std::reverse(c.begin(), c.end()); }
     template<class C> static void swap(C& c, int i, int j) { std::swap(c[i], c[j]); }
     template<class C> static auto max(const C& c) { return *std::max_element(c.begin(), c.end()); }

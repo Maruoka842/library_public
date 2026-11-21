@@ -58,3 +58,30 @@ struct Optional {
     // empty() は任意の JOptional<T> へ暗黙変換できる JOptionalEmpty を返す。
     static JOptionalEmpty empty() { return JOptionalEmpty{}; }
 };
+
+struct OptionalLong {
+    // 未テスト
+    // 計算量: O(1)
+    static JOptional<long long> of(long long v) { return JOptional<long long>{true, v}; }
+    // 未テスト
+    // 計算量: O(1)
+    static JOptionalEmpty empty() { return JOptionalEmpty{}; }
+};
+
+struct OptionalInt {
+    // 未テスト
+    // 計算量: O(1)
+    static JOptional<int> of(int v) { return JOptional<int>{true, v}; }
+    // 未テスト
+    // 計算量: O(1)
+    static JOptionalEmpty empty() { return JOptionalEmpty{}; }
+};
+
+struct OptionalDouble {
+    // 未テスト
+    // 計算量: O(1)
+    static JOptional<double> of(double v) { return JOptional<double>{true, v}; }
+    // 未テスト
+    // 計算量: O(1)
+    static JOptionalEmpty empty() { return JOptionalEmpty{}; }
+};

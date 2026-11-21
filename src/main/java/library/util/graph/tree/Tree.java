@@ -1113,6 +1113,40 @@ public class Tree extends Forest {
 		return ret;
 	}
 	
+	public record DiameterResult(int length, int u, int v, int[] centers) {}
+
+	/**
+	 * 木の直径の長さ、直径を達成するパスの両端点、および中心となる頂点を求める。
+	 *
+	 * 木の直径は任意の2頂点間の最短距離の最大値 max_{x, y} dist(x, y) として定義される。
+	 * 直径を達成するパスの一端を u、他端を v とする。
+	 * 中心 centers はパス上の頂点のうち、パスの中央に位置する頂点集合である。
+	 * パスの長さ length が偶数のときは中央の頂点1個、奇数のときは中央の2頂点となる。
+	 * N = 1 の場合は length = 0, u = 0, v = 0, centers = [0] を返す。
+	 *
+	 * 計算量: O(N)
+	 *
+	 * @return 直径情報（長さ、端点 u, v、中心頂点配列）
+	 * @throws IllegalArgumentException N == 0 の場合
+	 */
+	// 未テスト
+	public DiameterResult diameter() {
+		if (N == 0) throw new IllegalArgumentException("N must be positive");
+		if (N == 1) return new DiameterResult(0, 0, 0, new int[] { 0 });
+		var bfs = bfsDistances(0);
+		int u = ArrayUtils.argMax(bfs);
+		var bfs2 = bfsDistances(u);
+		int v = ArrayUtils.argMax(bfs2);
+		int length = bfs2[v];
+		int[] path = restoreShortestPath(bfs2, v);
+
+		int[] centers = (length % 2 == 0)
+			? new int[] { path[length / 2] }
+			: new int[] { Math.min(path[length / 2], path[length / 2 + 1]), Math.max(path[length / 2], path[length / 2 + 1]) };
+
+		return new DiameterResult(length, u, v, centers);
+	}
+
 	public void dump() {
 		System.out.println("N="+N+" M="+M);
 		for (var e : edges()) {

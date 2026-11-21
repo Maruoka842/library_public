@@ -161,6 +161,9 @@ struct JBitSet {
         }
         return bs;
     }
+    // 未テスト
+    // 計算量: O(N/64)
+    JBitSet clone() const { return *this; }
     JString toString() const {
         JString s = "{";
         bool first = true;

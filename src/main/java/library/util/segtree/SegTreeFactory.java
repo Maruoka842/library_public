@@ -158,6 +158,24 @@ public class SegTreeFactory {
 			
 		});
     }
+
+    /**
+     * 長さ {@code n} の列に対する最小値とその個数を集約するセグメント木を生成する。
+     * 各葉には {@code long[] {value, 1}} を設定し、集約値は {@code long[] {min, count}} とする。
+     *
+     * <p>計算量: O(n)</p>
+     *
+     * 未テスト
+     * @param n 要素数
+     * @return 最小値・個数を集約するセグメント木
+     */
+    public static SegTree<long[]> countMin(int n) {
+        return new SegTree<>(n, (a, b) -> {
+            if (a[0] < b[0]) return a;
+            if (b[0] < a[0]) return b;
+            return new long[] {a[0], a[1] + b[1]};
+        }, new long[] {Long.MAX_VALUE, 0});
+    }
     
 	/**
 	 * minの個数を返す。
@@ -166,6 +184,25 @@ public class SegTreeFactory {
 	 */
     public static Add_CountMax add_countMax(int n) {
     	return new Add_CountMax(n);
+    }
+
+    /**
+     * 長さ {@code n} の列に対する最大値とその個数を集約するセグメント木を生成する。
+     * 各葉には {@code long[] {value, 1}} を設定し、集約値は {@code long[] {max, count}} とする。
+     *
+     * <p>計算量: O(n)</p>
+     *
+     * 未テスト
+     * @param n 要素数
+     * @return 最大値・個数を集約するセグメント木
+     */
+    public static SegTree<long[]> countMax(int n) {
+    	//https://atcoder.jp/contests/abc484/submissions/80863339
+        return new SegTree<>(n, (a, b) -> {
+            if (a[0] > b[0]) return a;
+            if (b[0] > a[0]) return b;
+            return new long[] {a[0], a[1] + b[1]};
+        }, new long[] {Long.MIN_VALUE, 0});
     }
     
     /**
@@ -925,7 +962,7 @@ public class SegTreeFactory {
 	 */
 	public static class State implements MonoidElement<State> {
 		/** 単位元。 */
-		public static final State IDENTITY = new State(0, Integer.MAX_VALUE);
+		public static final State IDENTITY = new State(0, Long.MAX_VALUE);
 
 		/**
 		 * State モノイドのストラテジ。
@@ -945,16 +982,16 @@ public class SegTreeFactory {
 		};
 
 		/** 区間要素の総和。 */
-		public int sum;
+		public long sum;
 		/** 区間接頭辞和の最小値。 */
-		public int minOfPrefixSum;
+		public long minOfPrefixSum;
 
 		/**
 		 * コンストラクタ。
 		 * @param sum 区間要素の総和
 		 * @param minOfPrefixSum 区間接頭辞和の最小値
 		 */
-		public State(int sum, int minOfPrefixSum) {
+		public State(long sum, long minOfPrefixSum) {
 			this.sum = sum;
 			this.minOfPrefixSum = minOfPrefixSum;
 		}

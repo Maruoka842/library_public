@@ -387,4 +387,38 @@ public class ArrayUtilsTest {
         ArrayUtils.rotateLeftInplace(aLong, -1);
         assertArrayEquals(new long[]{10L, 20L, 30L, 40L}, aLong);
     }
+
+    @Test
+    public void testMinMaxRange() {
+        int[] aInt = {3, 1, 4, 1, 5, 9, 2, 6};
+        assertEquals(1, ArrayUtils.min(aInt, 0, 8));
+        assertEquals(9, ArrayUtils.max(aInt, 0, 8));
+        assertEquals(1, ArrayUtils.min(aInt, 2, 5)); // 4, 1, 5 -> 1
+        assertEquals(5, ArrayUtils.max(aInt, 2, 5)); // 4, 1, 5 -> 5
+        assertEquals(9, ArrayUtils.max(aInt, 4, 6)); // 5, 9 -> 9
+        assertEquals(5, ArrayUtils.min(aInt, 4, 6)); // 5, 9 -> 5
+        assertEquals(Integer.MAX_VALUE, ArrayUtils.min(aInt, 3, 3));
+        assertEquals(Integer.MIN_VALUE, ArrayUtils.max(aInt, 3, 3));
+        assertEquals(Integer.MAX_VALUE, ArrayUtils.min(aInt, 5, 2));
+        assertEquals(Integer.MIN_VALUE, ArrayUtils.max(aInt, 5, 2));
+
+        long[] aLong = {30L, 10L, 40L, 10L, 50L, 90L, 20L, 60L};
+        assertEquals(10L, ArrayUtils.min(aLong, 0, 8));
+        assertEquals(90L, ArrayUtils.max(aLong, 0, 8));
+        assertEquals(10L, ArrayUtils.min(aLong, 2, 5));
+        assertEquals(50L, ArrayUtils.max(aLong, 2, 5));
+        assertEquals(Long.MAX_VALUE, ArrayUtils.min(aLong, 3, 3));
+        assertEquals(Long.MIN_VALUE, ArrayUtils.max(aLong, 3, 3));
+
+        double[] aDouble = {3.5, 1.5, 4.5, 1.5, 5.5, 9.5, 2.5, 6.5};
+        assertEquals(1.5, ArrayUtils.min(aDouble), 1e-9);
+        assertEquals(9.5, ArrayUtils.max(aDouble), 1e-9);
+        assertEquals(1.5, ArrayUtils.min(aDouble, 0, 8), 1e-9);
+        assertEquals(9.5, ArrayUtils.max(aDouble, 0, 8), 1e-9);
+        assertEquals(1.5, ArrayUtils.min(aDouble, 2, 5), 1e-9);
+        assertEquals(5.5, ArrayUtils.max(aDouble, 2, 5), 1e-9);
+        assertEquals(Double.POSITIVE_INFINITY, ArrayUtils.min(aDouble, 3, 3), 1e-9);
+        assertEquals(Double.NEGATIVE_INFINITY, ArrayUtils.max(aDouble, 3, 3), 1e-9);
+        assertEquals(Double.POSITIVE_INFINITY, ArrayUtils.min(new double[0]), 1e-9);
+    }
 }

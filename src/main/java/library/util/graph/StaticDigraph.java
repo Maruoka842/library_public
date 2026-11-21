@@ -121,5 +121,61 @@ public class StaticDigraph {
 	}
 	
 	
+	/**
+	 * 各弱連結成分を誘導部分グラフとして独立した新たな StaticDigraph インスタンスに再構築し、その配列を返す。
+	 * 辺の向きを無視した連結成分（弱連結成分）ごとに分解し、各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 *
+	 * 計算量: O(N + M alpha(N))
+	 *
+	 * @return 各弱連結成分を表す StaticDigraph の配列
+	 */
+	// 未テスト
+	public StaticDigraph[] connectedComponents() {
+		library.util.unionfind.UnionFind uf = new library.util.unionfind.UnionFind(N);
+		for (int u = 0; u < N; u++) {
+			for (int v : adj(u)) {
+				uf.union(u, v);
+			}
+		}
+		int[] compId = new int[N];
+		Arrays.fill(compId, -1);
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			int root = uf.root(i);
+			if (compId[root] == -1) {
+				compId[root] = k++;
+			}
+			compId[i] = compId[root];
+		}
+		@SuppressWarnings("unchecked")
+		ArrayList<Integer>[] comps = new ArrayList[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[compId[i]].add(i);
+		}
+		int[] mapping = new int[N];
+		@SuppressWarnings("unchecked")
+		List<int[]>[] compEdges = new List[k];
+		for (int c = 0; c < k; c++) {
+			compEdges[c] = new ArrayList<>();
+			ArrayList<Integer> comp = comps[c];
+			for (int i = 0; i < comp.size(); i++) {
+				mapping[comp.get(i)] = i;
+			}
+		}
+		for (int u = 0; u < N; u++) {
+			int c = compId[u];
+			for (int v : adj(u)) {
+				compEdges[c].add(new int[] {mapping[u], mapping[v]});
+			}
+		}
+		StaticDigraph[] res = new StaticDigraph[k];
+		for (int c = 0; c < k; c++) {
+			res[c] = new StaticDigraph(comps[c].size(), compEdges[c]);
+		}
+		return res;
+	}
+
 	void tr(Object...objects) {System.out.println(Arrays.deepToString(objects));}
 }

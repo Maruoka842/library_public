@@ -8,7 +8,7 @@ public class SparseGraphTest {
 
     @Test
     public void testBasicOperations() {
-        SparseGraph g = new SparseGraph();
+        HashGraph g = new HashGraph();
         g.addVertex(3);
         g.addVertex(5);
         g.addVertex(10);
@@ -42,7 +42,7 @@ public class SparseGraphTest {
     @Test
     public void testContraction() {
         // Test 1: keep 1, remove 2 (1 absorbs 2, 2 is removed, leaving 1 and 3)
-        SparseGraph g1 = new SparseGraph();
+        HashGraph g1 = new HashGraph();
         g1.addVertex(1);
         g1.addVertex(2);
         g1.addVertex(3);
@@ -58,7 +58,7 @@ public class SparseGraphTest {
         assertTrue(g1.adjacents(3).contains(1));
 
         // Test 2: keep 20, remove 10 (20 absorbs 10, 10 is removed, leaving 20 and 30)
-        SparseGraph g2 = new SparseGraph();
+        HashGraph g2 = new HashGraph();
         g2.addVertex(10);
         g2.addVertex(20);
         g2.addVertex(30);
@@ -74,7 +74,7 @@ public class SparseGraphTest {
         assertTrue(g2.adjacents(30).contains(20));
 
         // Test 3: keep 200, remove 100 (200 absorbs 100, 100 is removed, leaving 200 and 300)
-        SparseGraph g3 = new SparseGraph();
+        HashGraph g3 = new HashGraph();
         g3.addVertex(100);
         g3.addVertex(200);
         g3.addVertex(300);
@@ -92,7 +92,7 @@ public class SparseGraphTest {
 
     @Test
     public void testContractionError() {
-        SparseGraph g = new SparseGraph();
+        HashGraph g = new HashGraph();
         g.addVertex(5);
         assertThrows(IllegalArgumentException.class, () -> {
             g.contractVertexThenRemoveMultipleEdge(5, 5);
@@ -101,7 +101,7 @@ public class SparseGraphTest {
 
     @Test
     public void testDrawSafe() {
-        SparseGraph g = new SparseGraph();
+        HashGraph g = new HashGraph();
         g.addVertex(1);
         g.addVertex(2);
         g.addEdge(1, 2);

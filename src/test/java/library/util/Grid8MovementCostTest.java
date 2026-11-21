@@ -119,6 +119,22 @@ public class Grid8MovementCostTest {
 		assertEquals(Long.MAX_VALUE / 4, Grid8MovementCost.minCost(-1, -1, cost2));
 	}
 
+	/**
+	 * 契約:
+	 * <ul><li>事前条件: なし。</li><li>事後条件: 大きな座標に対する移動コストが正しく計算される。</li><li>副作用: なし。</li><li>計算量: {@code O(1)}。</li><li>破壊的変更: なし。</li><li>参照共有・所有権: なし。</li><li>例外: なし。</li><li>未定義条件: なし。</li></ul>
+	 */
+	// 未テスト
+	@Test
+	public void testLargeCoordinates() {
+		long[] cost = {2, 3, 5, 7, 11, 13, 17, 19};
+		long x = 1_000_000_000L;
+		long y = 2_000_000_000L;
+		// (10^9, 2*10^9) is in cone of NE (1, 1) and N (0, 1):
+		// 10^9 * NE + 10^9 * N = (10^9, 2*10^9).
+		// cost = 10^9 * 3 + 10^9 * 5 = 8 * 10^9.
+		assertEquals(8_000_000_000L, Grid8MovementCost.minCost(x, y, cost));
+	}
+
 	@Test
 	public void testRandomWithForbiddenDirections() {
 		Random rnd = new Random(42);

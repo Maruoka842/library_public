@@ -10,6 +10,19 @@ template<class... Args> void jprintf(const JString& fmt, Args&&... args) {
     printf(fmt.c_str(), forward<Args>(args)...);
 }
 
+// 未テスト
+// 計算量: O(1)
+inline void jeprint() {}
+template<class T, class... U> void jeprint(const T& x, const U&... rest) { cerr << jstr(x); jeprint(rest...); }
+inline void jeprintln() { cerr << '\n'; }
+template<class T, class... U> void jeprintln(const T& x, const U&... rest) { cerr << jstr(x); jeprint(rest...); cerr << '\n'; }
+template<class... Args> void jeprintf(const char* fmt, Args&&... args) {
+    fprintf(stderr, fmt, forward<Args>(args)...);
+}
+template<class... Args> void jeprintf(const JString& fmt, Args&&... args) {
+    fprintf(stderr, fmt.c_str(), forward<Args>(args)...);
+}
+
 template<class... Args> JString jformat(const char* fmt, Args&&... args) {
     int sz = snprintf(nullptr, 0, fmt, forward<Args>(args)...);
     if (sz <= 0) return "";

@@ -1,10 +1,26 @@
+template<class T> struct JStream;
 template<class T> struct JStack : vector<T> {
     JStack() = default;
     explicit JStack(size_t initialCapacity) { this->reserve(initialCapacity); }
     JStack(size_t count, const T& value) : vector<T>(count, value) {}
     JStack(const vector<T>& source) : vector<T>(source) {}
     JStack(vector<T>&& source) : vector<T>(move(source)) {}
+    // 未テスト
+    // 計算量: O(N)
+    template<class Container, class = enable_if_t<!is_convertible_v<Container, std::size_t> && !is_same_v<decay_t<Container>, JStack> && !is_same_v<decay_t<Container>, vector<T>>>>
+    JStack(const Container& container) {
+        for (const auto& item : container) {
+            if constexpr (is_same_v<decay_t<decltype(item)>, JObject>) this->push_back(any_cast<T>(item));
+            else this->push_back(item);
+        }
+    }
     bool add(const T& x) { this->push_back(x); return true; }
+    // 未テスト
+    // 計算量: O(|c|)
+    template<class Container> bool addAll(const Container& c) {
+        for (const auto& item : c) this->push_back(item);
+        return true;
+    }
     T push(const T& x) { this->push_back(x); return x; }
     T pop() { T x = this->back(); this->pop_back(); return x; }
     T peek() const { return this->back(); }
@@ -18,5 +34,5 @@ template<class T> struct JStack : vector<T> {
     }
     int size() const { return (int)vector<T>::size(); }
     bool isEmpty() const { return this->empty(); }
-    JStream<T> stream() const { return JStream<T>(*this); }
+    auto stream() const { return JStream<T>(*this); }
 };

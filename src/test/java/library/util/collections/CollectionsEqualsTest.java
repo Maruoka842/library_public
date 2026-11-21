@@ -219,21 +219,21 @@ public class CollectionsEqualsTest {
 		assertEquals(map1, map2);
 		assertEquals(map1.hashCode(), map2.hashCode());
 
-		map1.add("abc".toCharArray(), 100L);
-		map1.add("def".toCharArray(), 200L);
+		map1.put("abc".toCharArray(), 100L);
+		map1.put("def".toCharArray(), 200L);
 
 		assertNotEquals(map1, map2);
 
-		map2.add("abc".toCharArray(), 100L);
-		map2.add("def".toCharArray(), 200L);
+		map2.put("abc".toCharArray(), 100L);
+		map2.put("def".toCharArray(), 200L);
 
 		assertEquals(map1, map2);
 		assertEquals(map1.hashCode(), map2.hashCode());
 
-		map1.add("abc".toCharArray(), 999L);
+		map1.put("abc".toCharArray(), 999L);
 		assertNotEquals(map1, map2);
 
-		map2.add("abc".toCharArray(), 999L);
+		map2.put("abc".toCharArray(), 999L);
 		assertEquals(map1, map2);
 		assertEquals(map1.hashCode(), map2.hashCode());
 

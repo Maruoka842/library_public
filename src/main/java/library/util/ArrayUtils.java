@@ -319,11 +319,7 @@ public class ArrayUtils {
 	}
 
 	public static void decrementAll(int[][] a) {
-		for (int i = 0; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				a[i][j]--;
-			}
-		}
+		ArrayUtils2D.decrementAll(a);
 	}
 	
 	public static void decrementAll(long[] a) {
@@ -404,21 +400,11 @@ public class ArrayUtils {
 	}
 	
 	public static void swapColumns(int i, int j, long[][] a) {
-		if(i==j)return;
-		for (int k = 0; k < a.length; k++) {
-			var tmp = a[k][i];
-			a[k][i] = a[k][j];
-			a[k][j] = tmp;
-		}
+		ArrayUtils2D.swapColumns(i, j, a);
 	}
 
 	public static <T> void swapColumns(int i, int j, T[][] a) {
-		if (i == j) return;
-		for (int k = 0; k < a.length; k++) {
-			T tmp = a[k][i];
-			a[k][i] = a[k][j];
-			a[k][j] = tmp;
-		}
+		ArrayUtils2D.swapColumns(i, j, a);
 	}
 
 	/**
@@ -438,19 +424,11 @@ public class ArrayUtils {
 	
 	
 	public static int[][] randomIntTable(int lowerBound, int upperBound, int H, int W) {
-		int[][] ret = new int[H][];
-		for (int i = 0; i < H; i++) {
-			ret[i]=randomIntArray(lowerBound, upperBound, W);
-		}
-		return ret;
+		return ArrayUtils2D.randomIntTable(lowerBound, upperBound, H, W);
 	}
 	
 	public static long[][] randomLongTable(long lowerBound, long upperBound, int H, int W) {
-		long[][] ret = new long[H][];
-		for (int i = 0; i < H; i++) {
-			ret[i]=randomLongArray(lowerBound, upperBound, W);
-		}
-		return ret;
+		return ArrayUtils2D.randomLongTable(lowerBound, upperBound, H, W);
 	}
 	
 	
@@ -546,7 +524,7 @@ public class ArrayUtils {
 	}
 	
 	public static boolean checkBounds(int i, int j, int[][] a) {
-		return 0 <= i && i < a.length && checkBounds(j, a[i]);
+		return ArrayUtils2D.checkBounds(i, j, a);
 	}
 	
 	public static boolean checkBounds(int i, int j, int k, int[][][] a) {
@@ -570,8 +548,8 @@ public class ArrayUtils {
     }
 
     public static boolean checkBounds(int i, int j, long[][] a) {
-        return 0 <= i && i < a.length && checkBounds(j, a[i]);
-    }
+		return ArrayUtils2D.checkBounds(i, j, a);
+	}
 
     public static boolean checkBounds(int i, int j, int k, long[][][] a) {
         return 0 <= i && i < a.length && checkBounds(j, k, a[i]);
@@ -594,9 +572,7 @@ public class ArrayUtils {
 	}
 
 	public static <T> void fill(T[][] a, T v) {
-		for (int i = 0; i < a.length; i++) {
-			fill(a[i],v);
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 	
 	public static <T> void fill(T[][][] a, T v) {
@@ -617,9 +593,7 @@ public class ArrayUtils {
 	}
 	
 	public static void fill(int[][] a, int v) {
-		for (int i = 0; i < a.length; ++i) {
-			ArrayUtils.fill(a[i], v);
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 	
 	public static void fill(int[][][] a, int v) {
@@ -648,20 +622,12 @@ public class ArrayUtils {
 	}
 
 	public static void fill(double[][] a, double v) {
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				a[i][j] = v;
-			}
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 	
 
 	public static void fill(char[][] a, char v) {
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				a[i][j] = v;
-			}
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 
 
@@ -670,9 +636,7 @@ public class ArrayUtils {
 	}
 
 	public static void fill(long[][] a, long v) {
-		for (int i = 0; i < a.length; ++i) {
-			ArrayUtils.fill(a[i], v);
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 
 	public static void fill(long[][][] a, long v) {
@@ -731,9 +695,7 @@ public class ArrayUtils {
 	}
 	
 	public static void fill(boolean[][] a, boolean v) {
-		for (int i = 0; i < a.length; ++i) {
-			ArrayUtils.fill(a[i], v);
-		}
+		ArrayUtils2D.fill(a, v);
 	}
 
 	public static void fill(boolean[][][] a, boolean v) {
@@ -784,6 +746,44 @@ public class ArrayUtils {
 	 */
 	// 未テスト
 	public static void reverse(long[] a, int start, int end) {
+		int s = start;
+		int t = end - 1;
+		while (s < t) {
+			swap(s, t, a);
+			++s;
+			--t;
+		}
+	}
+	
+	/**
+	 * a[start, end) を反転（インプレース）する。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 */
+	// 未テスト
+	public static void reverse(char[] a, int start, int end) {
+		int s = start;
+		int t = end - 1;
+		while (s < t) {
+			swap(s, t, a);
+			++s;
+			--t;
+		}
+	}
+	
+	/**
+	 * a[start, end) を反転（インプレース）する。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 */
+	// 未テスト
+	public static <T> void reverse(T[] a, int start, int end) {
 		int s = start;
 		int t = end - 1;
 		while (s < t) {
@@ -858,29 +858,15 @@ public class ArrayUtils {
 	 * @param a
 	 */
 	public static void reverseHolizontally(int[][] a) {
-		for (int i = 0; i < a.length; i++) {
-			ArrayUtils.reverse(a[i]);
-		}
+		ArrayUtils2D.reverseHolizontally(a);
 	}
 	
 	public static void reverseVertically(int[][] a) {
-		for (int i = 0; 2 * i < a.length; i++) {
-            for (int j = 0; j < a[i].length; j++) {
-                var tmp = a[i][j];
-                a[i][j] = a[a.length - 1 - i][j];
-                a[a.length - 1 - i][j] = tmp;
-            }
-        }
+		ArrayUtils2D.reverseVertically(a);
 	}
 	
 	public static void reverseVertically(long[][] a) {
-		for (int i = 0; 2 * i < a.length; i++) {
-            for (int j = 0; j < a[i].length; j++) {
-                var tmp = a[i][j];
-                a[i][j] = a[a.length - 1 - i][j];
-                a[a.length - 1 - i][j] = tmp;
-            }
-        }
+		ArrayUtils2D.reverseVertically(a);
 	}
 
 	
@@ -1028,40 +1014,20 @@ public class ArrayUtils {
 
 	
 	public static boolean equals(int[][] a, int[][] b) {
-		if (a.length != b.length)
-			return false;
-		for (int i = 0; i < a.length; ++i) {
-			if (!equals(a[i], b[i])) return false;
-		}
-		return true;
+		return ArrayUtils2D.equals(a, b);
 	}
 	
 	public static boolean equals(long[][] a, long[][] b) {
-		if (a.length != b.length)
-			return false;
-		for (int i = 0; i < a.length; ++i) {
-			if (!equals(a[i], b[i])) return false;
-		}
-		return true;
+		return ArrayUtils2D.equals(a, b);
 	}
 	
 	public static boolean equals(boolean[][] a, boolean[][] b) {
-		if (a.length != b.length)
-			return false;
-		for (int i = 0; i < a.length; ++i) {
-			if (!equals(a[i], b[i])) return false;
-		}
-		return true;
+		return ArrayUtils2D.equals(a, b);
 	}
 	
 	
 	public static boolean equals(char[][] a, char[][] b) {
-		if (a.length != b.length)
-			return false;
-		for (int i = 0; i < a.length; ++i) {
-			if (!equals(a[i], b[i])) return false;
-		}
-		return true;
+		return ArrayUtils2D.equals(a, b);
 	}
 
 
@@ -1655,25 +1621,11 @@ public class ArrayUtils {
 	
 	
 	public static long[][] prefixMax(long[][] a) {
-		long[][] b = copy(a);
-		for (int i = 0; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				if(i>0)b[i][j]=Math.max(b[i][j], b[i-1][j]);
-				if(j>0)b[i][j]=Math.max(b[i][j], b[i][j-1]);
-			}
-		}
-		return b;
+		return ArrayUtils2D.prefixMax(a);
 	}
 	
 	public static long[][] prefixMaxFromLeftBottom(long[][] a) {
-		long[][] b = copy(a);
-		for (int i = a.length-1; i >= 0; i--) {
-			for (int j = 0; j < a[i].length; j++) {
-				if(i+1<a.length)b[i][j]=Math.max(b[i][j], b[i+1][j]);
-				if(j>0)b[i][j]=Math.max(b[i][j], b[i][j-1]);
-			}
-		}
-		return b;
+		return ArrayUtils2D.prefixMaxFromLeftBottom(a);
 	}
 
 	
@@ -1707,16 +1659,7 @@ public class ArrayUtils {
 	 * @return
 	 */
 	public static long[][] prefixSum(long[][] a) {
-		long[][] b = new long[a.length][];
-		for (int i = 0; i < b.length; ++i) {
-			b[i] = ArrayUtils.prefixSum(a[i]);
-		}
-		for (int i = 1; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				b[i][j] += b[i-1][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.prefixSum(a);
 	}
 	
 	
@@ -1731,14 +1674,7 @@ public class ArrayUtils {
 	 * @return
 	 */
 	public static long[][] prefixDiff(long[][] a) {
-		//a(x,y)=b(x,y)/(1-x)(1-y)
-		long[][] b = new long[a.length][a[0].length];
-		for (int i = 0; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				b[i][j]=a[i][j]-(i==0?0:a[i-1][j])-(j==0?0:a[i][j-1])+(i==0||j==0?0:a[i-1][j-1]);
-			}
-		}
-		return b;
+		return ArrayUtils2D.prefixDiff(a);
 	}
 	
 	
@@ -1780,6 +1716,21 @@ public class ArrayUtils {
 	
 	public static double[] prefixSumFromEmpty(double[] a) {
 		double[] b = new double[a.length + 1];
+		for (int i = 1; i < b.length; ++i) {
+			b[i] = b[i - 1] + a[i - 1];
+		}
+		return b;
+	}
+	
+	
+	/**
+	 * b[i] = a[1] + a[2] + .. + a[i - 1]
+	 * 
+	 * @param a
+	 * @return
+	 */
+	public static int[] prefixSumFromEmptyAsInt(int[] a) {
+		int[] b = new int[a.length + 1];
 		for (int i = 1; i < b.length; ++i) {
 			b[i] = b[i - 1] + a[i - 1];
 		}
@@ -2044,13 +1995,7 @@ public class ArrayUtils {
 	}
 	
 	public static long[][] copyOf(long[][] a, int length0, int length1) {
-		long[][]b=new long[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 	
 	public static long[][][] copyOf(long[][][] a, int length0, int length1, int length2) {
@@ -2080,154 +2025,63 @@ public class ArrayUtils {
 	}
 	
 	public static int[][] copyOf(int[][] a, int length0, int length1) {
-		int[][]b=new int[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static short[][] copyOf(short[][] a, int length0, int length1) {
-		short[][]b=new short[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static byte[][] copyOf(byte[][] a, int length0, int length1) {
-		byte[][]b=new byte[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static char[][] copyOf(char[][] a, int length0, int length1) {
-		char[][]b=new char[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static boolean[][] copyOf(boolean[][] a, int length0, int length1) {
-		boolean[][]b=new boolean[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static float[][] copyOf(float[][] a, int length0, int length1) {
-		float[][]b=new float[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 
 	public static double[][] copyOf(double[][] a, int length0, int length1) {
-		double[][]b=new double[length0][length1];
-		for (int i = 0; i < Math.min(a.length, length0); i++) {
-			for (int j = 0; j < Math.min(a[i].length, length1); j++) {
-				b[i][j]=a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.copyOf(a, length0, length1);
 	}
 	
 	public static int[][] copyOfRange2D(int[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    int[][] b = new int[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static long[][] copyOfRange2D(long[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    long[][] b = new long[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static short[][] copyOfRange2D(short[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    short[][] b = new short[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static byte[][] copyOfRange2D(byte[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    byte[][] b = new byte[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static char[][] copyOfRange2D(char[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-		//https://atcoder.jp/contests/abc455/submissions/75278963
-	    char[][] b = new char[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static boolean[][] copyOfRange2D(boolean[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    boolean[][] b = new boolean[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static float[][] copyOfRange2D(float[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    float[][] b = new float[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static double[][] copyOfRange2D(double[][] a, int rowFrom, int colFrom, int rowTo, int colTo) {
-	    double[][] b = new double[rowTo - rowFrom][colTo - colFrom];
-	    for (int i = rowFrom; i < rowTo; i++) {
-	    	for (int j = colFrom; j < colTo; ++j) {
-	    		b[i - rowFrom][j - colFrom] = a[i][j];
-	    	}
-	    }
-	    return b;
+		return ArrayUtils2D.copyOfRange2D(a, rowFrom, colFrom, rowTo, colTo);
 	}
 
 	public static int[] copy(int[] a) {
@@ -2247,11 +2101,7 @@ public class ArrayUtils {
 	}
 	
 	public static boolean[][] copy(boolean[][] a) {
-		boolean[][] b=new boolean[a.length][];
-		for (int i = 0; i < a.length; i++) {
-			b[i]=ArrayUtils.copy(a[i]);
-		}
-		return b;
+		return ArrayUtils2D.copy(a);
 	}
 	
 	public static long[] tolong(int[] a) {
@@ -2263,29 +2113,19 @@ public class ArrayUtils {
 	}
 	
 	public static long[][] tolong(int[][] a) {
-		long[][] ret=new long[a.length][];
-		for (int i = 0; i < a.length; i++) {
-			ret[i] = tolong(a[i]);
-		}
-		return ret;
+		return ArrayUtils2D.tolong(a);
 	}
 
 	public static int[][] copy(int[][] a) {
-		int[][] b = new int[a.length][];
-		Arrays.setAll(b, i -> Arrays.copyOf(a[i], a[i].length));
-		return b;
+		return ArrayUtils2D.copy(a);
 	}
 
 	public static char[][] copy(char[][] a) {
-		char[][] b = new char[a.length][];
-		Arrays.setAll(b, i -> Arrays.copyOf(a[i], a[i].length));
-		return b;
+		return ArrayUtils2D.copy(a);
 	}
 
 	public static long[][] copy(long[][] a) {
-		long[][] b = new long[a.length][];
-		Arrays.setAll(b, i -> Arrays.copyOf(a[i], a[i].length));
-		return b;
+		return ArrayUtils2D.copy(a);
 	}
 	
 	/**
@@ -2303,11 +2143,7 @@ public class ArrayUtils {
 	 */
 	// 未テスト
 	public static double[][] copy(double[][] a) {
-		double[][] b = new double[a.length][];
-		for (int i = 0; i < a.length; i++) {
-			b[i] = Arrays.copyOf(a[i], a[i].length);
-		}
-		return b;
+		return ArrayUtils2D.copy(a);
 	}
 
 	public static long[][][] copy(long[][][] a) {
@@ -2332,16 +2168,7 @@ public class ArrayUtils {
 	 */
 	// 未テスト
 	public static double[][] prefixSum(double[][] a) {
-		double[][] b = new double[a.length][];
-		for (int i = 0; i < a.length; i++) {
-			b[i] = ArrayUtils.prefixSum(a[i]);
-		}
-		for (int j = 0; j < a[0].length; j++) {
-			for (int i = 1; i < a.length; i++) {
-				b[i][j] += b[i - 1][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.prefixSum(a);
 	}
 	
 	public static long[][][][] copy(long[][][][] a) {
@@ -2353,55 +2180,19 @@ public class ArrayUtils {
 	}
 
 	public static char[][] rotateRightJagged(char[][] a, char pad) {
-		//https://atcoder.jp/contests/abc366/submissions/73573787
-		int N=a.length;
-        int len = 0;
-        for (int i = 0; i < N; i++) {
-        	len = Math.max(len, a[i].length);
-        }
-        char[][] ret = new char[len][N];
-        ArrayUtils.fill(ret, pad);
-        for (int i = 0; i < N; i++) {
-            for (int j = 0; j < a[i].length; j++) {
-                ret[j][(N - 1) - i] = a[i][j];
-            }
-        }
-        for (int i = 0; i < ret.length; i++) {
-          int last=ret[i].length-1;
-          while(ret[i][last]==pad)last--;
-          ret[i]=Arrays.copyOf(ret[i], last+1);
-        }
-        return ret;
+		return ArrayUtils2D.rotateRightJagged(a, pad);
 	}
 	
 	public static char[][] rotateRightGrid(char[][] a) {
-		char[][] b = new char[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][a.length - 1 - i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rotateRightGrid(a);
 	}
 
 	public static int[][] rotateRightGrid(int[][] a) {
-		int[][] b = new int[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][a.length - 1 - i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rotateRightGrid(a);
 	}
 	
 	public static long[][] rightRotateGrid(long[][] a) {
-		long[][] b = new long[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][a.length - 1 - i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rightRotateGrid(a);
 	}
 
 	/**
@@ -2417,13 +2208,7 @@ public class ArrayUtils {
 	 * @return 反時計回りに90度回転した2次元配列
 	 */
 	public static char[][] rotateLeftGrid(char[][] a) {
-		char[][] b = new char[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[a[i].length - 1 - j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rotateLeftGrid(a);
 	}
 
 	/**
@@ -2439,13 +2224,7 @@ public class ArrayUtils {
 	 * @return 反時計回りに90度回転した2次元配列
 	 */
 	public static int[][] rotateLeftGrid(int[][] a) {
-		int[][] b = new int[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[a[i].length - 1 - j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rotateLeftGrid(a);
 	}
 
 	/**
@@ -2461,62 +2240,19 @@ public class ArrayUtils {
 	 * @return 反時計回りに90度回転した2次元配列
 	 */
 	public static long[][] rotateLeftGrid(long[][] a) {
-		long[][] b = new long[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[a[i].length - 1 - j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.rotateLeftGrid(a);
 	}
 	
 	public static void rotate180(long[][] a) {
-	    int n = a.length;
-	    int m = a[0].length;
-	    for (int i = 0; i < (n + 1) / 2; i++) {
-	        for (int j = 0; j < m; j++) {
-	            int ni = n - 1 - i;
-	            int nj = m - 1 - j;
-	            if (i < ni || (i == ni && j < nj)) {
-	            	var tmp = a[i][j];
-	            	a[i][j] = a[ni][nj];
-	            	a[ni][nj] = tmp;
-	            }
-	        }
-	    }
+		ArrayUtils2D.rotate180(a);
 	}
 	
 	public static void rotate180(int[][] a) {
-	    int n = a.length;
-	    int m = a[0].length;
-	    for (int i = 0; i < (n + 1) / 2; i++) {
-	        for (int j = 0; j < m; j++) {
-	            int ni = n - 1 - i;
-	            int nj = m - 1 - j;
-	            if (i < ni || (i == ni && j < nj)) {
-	            	var tmp = a[i][j];
-	            	a[i][j] = a[ni][nj];
-	            	a[ni][nj] = tmp;
-	            }
-	        }
-	    }
+		ArrayUtils2D.rotate180(a);
 	}
 	
 	public static void rotate180(char[][] a) {
-		//https://atcoder.jp/contests/abc455/submissions/75278963
-	    int n = a.length;
-	    int m = a[0].length;
-	    for (int i = 0; i < (n + 1) / 2; i++) {
-	        for (int j = 0; j < m; j++) {
-	            int ni = n - 1 - i;
-	            int nj = m - 1 - j;
-	            if (i < ni || (i == ni && j < nj)) {
-	            	var tmp = a[i][j];
-	            	a[i][j] = a[ni][nj];
-	            	a[ni][nj] = tmp;
-	            }
-	        }
-	    }
+		ArrayUtils2D.rotate180(a);
 	}
 	
 	public static double sum(double[] a) {
@@ -2535,23 +2271,11 @@ public class ArrayUtils {
 	}
 	
 	public static long sum(int[][] a) {
-		long ret = 0;
-		for (int i = 0; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				ret+=a[i][j];
-			}
-		}
-		return ret;
+		return ArrayUtils2D.sum(a);
 	}
 	
 	public static double sum(double[][] a) {
-		double ret = 0;
-		for (int i = 0; i < a.length; i++) {
-			for (int j = 0; j < a[i].length; j++) {
-				ret+=a[i][j];
-			}
-		}
-		return ret;
+		return ArrayUtils2D.sum(a);
 	}
 	
 	public static long sum(long[] a) {
@@ -2590,24 +2314,12 @@ public class ArrayUtils {
 	}
 	
 	public static long modSum(long[][] a, long mod) {
-		Fp mo=new Fp(mod);
-		long ret = 0;
-		for (long[] vals : a) {
-			ret += modSum(vals, mod);
-			ret=mo.reduce(ret);
-		}
-		return ret;
+		return ArrayUtils2D.modSum(a, mod);
 	}
 	
 	
 	public static long modSum(int[][] a, long mod) {
-		Fp mo=new Fp(mod);
-		long ret = 0;
-		for (int[] vals : a) {
-			ret += modSum(vals, mod);
-			ret=mo.reduce(ret);
-		}
-		return ret;
+		return ArrayUtils2D.modSum(a, mod);
 	}
 	
 	public static long modSum(long[][][] a, long mod) {
@@ -2859,6 +2571,193 @@ public class ArrayUtils {
 		return Arrays.copyOf(ret, size);
 	}
 	
+	/**
+	 * (-a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2のときはエラー。
+	 *
+	 * @param a
+	 * @return 
+	 * @complexity
+	 */
+	public static int argSecondMax(int[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMax = -1;
+	    int argSecondMax = -1;
+	    for (int i = 0; i < a.length; i++) {
+	        if (argMax == -1 || a[i] > a[argMax]) {
+	            argSecondMax = argMax;
+	            argMax = i;
+	        } else if (argSecondMax == -1 || a[i] > a[argSecondMax]) {
+	            argSecondMax = i;
+	        }
+	    }
+	    return argSecondMax;
+	}
+	
+	/**
+	 * (-a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2のときはエラー。
+	 *
+	 * @param a
+	 * @return 
+	 * @complexity
+	 */
+	public static int argSecondMax(long[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMax = -1;
+	    int argSecondMax = -1;
+	    for (int i = 0; i < a.length; i++) {
+	        if (argMax == -1 || a[i] > a[argMax]) {
+	            argSecondMax = argMax;
+	            argMax = i;
+	        } else if (argSecondMax == -1 || a[i] > a[argSecondMax]) {
+	            argSecondMax = i;
+	        }
+	    }
+	    return argSecondMax;
+	}
+
+	/**
+	 * (-a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2のときはエラー。
+	 *
+	 * @param a
+	 * @return 
+	 * @complexity
+	 */
+	public static int argSecondMax(double[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMax = -1;
+	    int argSecondMax = -1;
+	    for (int i = 0; i < a.length; i++) {
+	        if (argMax == -1 || a[i] > a[argMax]) {
+	            argSecondMax = argMax;
+	            argMax = i;
+	        } else if (argSecondMax == -1 || a[i] > a[argSecondMax]) {
+	            argSecondMax = i;
+	        }
+	    }
+	    return argSecondMax;
+	}	
+	
+	/**
+	 * (-a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2のときはエラー。
+	 *
+	 * @param a
+	 * @return 
+	 * @complexity
+	 */
+	public static int argSecondMax(char[] a) {
+		if (a.length <= 1) throw new AssertionError();
+	    int argMax = -1;
+	    int argSecondMax = -1;
+	    for (int i = 0; i < a.length; i++) {
+	        if (argMax == -1 || a[i] > a[argMax]) {
+	            argSecondMax = argMax;
+	            argMax = i;
+	        } else if (argSecondMax == -1 || a[i] > a[argSecondMax]) {
+	            argSecondMax = i;
+	        }
+	    }
+	    return argSecondMax;
+	}
+
+	/**
+	 * (a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2 のときはエラー。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @return 2 番目に小さい要素の添字
+	 */
+	// 未テスト
+	public static int argSecondMin(int[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMin = -1;
+		int argSecondMin = -1;
+		for (int i = 0; i < a.length; i++) {
+			if (argMin == -1 || a[i] < a[argMin]) {
+				argSecondMin = argMin;
+				argMin = i;
+			} else if (argSecondMin == -1 || a[i] < a[argSecondMin]) {
+				argSecondMin = i;
+			}
+		}
+		return argSecondMin;
+	}
+
+	/**
+	 * (a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2 のときはエラー。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @return 2 番目に小さい要素の添字
+	 */
+	// 未テスト
+	public static int argSecondMin(long[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMin = -1;
+		int argSecondMin = -1;
+		for (int i = 0; i < a.length; i++) {
+			if (argMin == -1 || a[i] < a[argMin]) {
+				argSecondMin = argMin;
+				argMin = i;
+			} else if (argSecondMin == -1 || a[i] < a[argSecondMin]) {
+				argSecondMin = i;
+			}
+		}
+		return argSecondMin;
+	}
+
+	/**
+	 * (a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2 のときはエラー。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @return 2 番目に小さい要素の添字
+	 */
+	// 未テスト
+	public static int argSecondMin(double[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMin = -1;
+		int argSecondMin = -1;
+		for (int i = 0; i < a.length; i++) {
+			if (argMin == -1 || a[i] < a[argMin]) {
+				argSecondMin = argMin;
+				argMin = i;
+			} else if (argSecondMin == -1 || a[i] < a[argSecondMin]) {
+				argSecondMin = i;
+			}
+		}
+		return argSecondMin;
+	}
+
+	/**
+	 * (a[i], i) の辞書順で 2 番目に小さい要素の添字を返す。
+	 * 値が等しい場合は添字が小さい方を優先する。 a.length < 2 のときはエラー。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @return 2 番目に小さい要素の添字
+	 */
+	// 未テスト
+	public static int argSecondMin(char[] a) {
+		if (a.length <= 1) throw new AssertionError();
+		int argMin = -1;
+		int argSecondMin = -1;
+		for (int i = 0; i < a.length; i++) {
+			if (argMin == -1 || a[i] < a[argMin]) {
+				argSecondMin = argMin;
+				argMin = i;
+			} else if (argSecondMin == -1 || a[i] < a[argSecondMin]) {
+				argSecondMin = i;
+			}
+		}
+		return argSecondMin;
+	}
 	
 	/***
 	 * a[i] = min a となる最大のiを返す。
@@ -3054,7 +2953,114 @@ public class ArrayUtils {
 		reverse(a, k, a.length);
 		reverse(a, 0, a.length);
 	}
+	
+	
+	/***
+	 * b = [a[shift], a[shift+1],.., a[a.length-1], a[0], ..a[shift-1]] となる配列を返す。
+	 * shift < 0 でも動く
+	 * 
+	 * @param shift
+	 * @param a
+	 * @return
+	 */
+	/**
+	 * 配列 a を左に shift 個インプレースで回転する。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @param shift 回転数 (負の値も指定可能)
+	 */
+	// 未テスト
+	public static <T> void rotateLeftInplace(T[] a, int shift) {
+		if (a.length == 0 || shift % a.length == 0) return;
+		int k = (shift % a.length + a.length) % a.length;
+		reverse(a, 0, k);
+		reverse(a, k, a.length);
+		reverse(a, 0, a.length);
+	}
+	
+	public static <T> void rotateLeftInplace(T[] a, int start, int end, int shift) {
+		if (start < 0 || end > a.length) throw new AssertionError();
+		int n = end - start;
+		if (n == 0 || shift % n == 0) return;
+		int k = (shift % n + n) % n;
+		reverse(a, start, start + k);
+		reverse(a, start + k, end);
+		reverse(a, start, end);
+	}
+	
+	public static void rotateLeftInplace(int[] a, int start, int end, int shift) {
+		if (start < 0 || end > a.length) throw new AssertionError();
+		int n = end - start;
+		if (n == 0 || shift % n == 0) return;
+		int k = (shift % n + n) % n;
+		reverse(a, start, start + k);
+		reverse(a, start + k, end);
+		reverse(a, start, end);
+	}
+	
+	public static void rotateLeftInplace(long[] a, int start, int end, int shift) {
+		if (start < 0 || end > a.length) throw new AssertionError();
+		int n = end - start;
+		if (n == 0 || shift % n == 0) return;
+		int k = (shift % n + n) % n;
+		reverse(a, start, start + k);
+		reverse(a, start + k, end);
+		reverse(a, start, end);
+	}
+	
+	
+	public static void rotateLeftInplace(char[] a, int start, int end, int shift) {
+		if (start < 0 || end > a.length) throw new AssertionError();
+		int n = end - start;
+		if (n == 0 || shift % n == 0) return;
+		int k = (shift % n + n) % n;
+		reverse(a, start, start + k);
+		reverse(a, start + k, end);
+		reverse(a, start, end);
+	}
+	
+	public static <T> void rotateColumnUpInplace(T[][] a, int col, int start, int end, int shift) {
+		ArrayUtils2D.rotateColumnUpInplace(a, col, start, end, shift);
+	}
 
+	public static <T> void reverseColumn(T[][] a, int col, int start, int end) {
+		ArrayUtils2D.reverseColumn(a, col, start, end);
+	}
+	
+	public static void rotateColumnUpInplace(int[][] a, int col, int start, int end, int shift) {
+		ArrayUtils2D.rotateColumnUpInplace(a, col, start, end, shift);
+	}
+
+	public static <T> void reverseColumn(int[][] a, int column, int start, int end) {
+		ArrayUtils2D.reverseColumn(a, column, start, end);
+	}
+	
+	
+	public static void rotateColumnUpInplace(char[][] a, int column, int startInclusive, int endExclusive, int shift) {
+		ArrayUtils2D.rotateColumnUpInplace(a, column, startInclusive, endExclusive, shift);
+	}
+
+	public static <T> void reverseColumn(char[][] a, int column, int start, int end) {
+		ArrayUtils2D.reverseColumn(a, column, start, end);
+	}
+	
+	public static char[] getColumn(char[][] a, int column) {
+		return ArrayUtils2D.getColumn(a, column);
+	}
+	
+	public static int[] getColumn(int[][] a, int column) {
+		return ArrayUtils2D.getColumn(a, column);
+	}
+	
+	public static long[] getColumn(long[][] a, int column) {
+		return ArrayUtils2D.getColumn(a, column);
+	}
+	
+	public static double[] getColumn(double[][] a, int column) {
+		return ArrayUtils2D.getColumn(a, column);
+	}
+	
 	/**
 	 * 配列 a を左に shift 個インプレースで回転する。
 	 * 計算量: O(N)
@@ -3070,6 +3076,23 @@ public class ArrayUtils {
 		reverse(a, k, a.length);
 		reverse(a, 0, a.length);
 	}
+	
+	/**
+	 * 配列 a を左に shift 個インプレースで回転する。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @param shift 回転数 (負の値も指定可能)
+	 */
+	// 未テスト
+	public static void rotateLeftInplace(char[] a, int shift) {
+		if (a.length == 0 || shift % a.length == 0) return;
+		int k = (shift % a.length + a.length) % a.length;
+		reverse(a, 0, k);
+		reverse(a, k, a.length);
+		reverse(a, 0, a.length);
+	}
+
 
 	public static int[] rotateLeft(int[] a, int shift) {
 		shift = shift % a.length;
@@ -3134,10 +3157,160 @@ public class ArrayUtils {
 		return b;
 	}
 	
+	/**
+	 * 位置 deletePos の要素 v を削除して連結した後、位置 insertPos に v を挿入する
+	 * @param a
+	 * @param deletePos
+	 * @param insertPos
+	 */
+	public static void movePosInplace(int[] a, int deletePos, int insertPos) {
+	    int v = a[deletePos];
+	    if (deletePos < insertPos) {
+	        System.arraycopy(a, deletePos + 1, a, deletePos, insertPos - deletePos);
+	    } else if (deletePos > insertPos) {
+	        System.arraycopy(a, insertPos, a, insertPos + 1, deletePos - insertPos);
+	    }
+	    a[insertPos] = v;
+	}
+	
+	
+	/**
+	 * 位置 deletePos の要素 v を削除して連結した後、位置 insertPos に v を挿入する
+	 * @param a
+	 * @param deletePos
+	 * @param insertPos
+	 */
+	public static int[] movePos(int[] a, int deletePos, int insertPos) {
+		int[] ret = a.clone();
+		movePosInplace(ret, deletePos, insertPos);
+		return ret;
+	}
+	
+	/**
+	 * 位置 deletePos の要素 v を削除して連結した後、位置 insertPos に v を挿入する
+	 * @param a
+	 * @param deletePos
+	 * @param insertPos
+	 */
+	public static <T> T[] movePos(T[] a, int deletePos, int insertPos) {
+		T[] ret = a.clone();
+		movePosInplace(ret, deletePos, insertPos);
+		return ret;
+	}
+	
+	/**
+	 * 位置 deletePos の要素 v を削除して連結した後、位置 insertPos に v を挿入する
+	 * @param <T>
+	 * @param a
+	 * @param deletePos
+	 * @param insertPos
+	 */
+	public static <T> void movePosInplace(T[] a, int deletePos, int insertPos) {
+		var v = a[deletePos];
+	    if (deletePos < insertPos) {
+	        System.arraycopy(a, deletePos + 1, a, deletePos, insertPos - deletePos);
+	    } else if (deletePos > insertPos) {
+	        System.arraycopy(a, insertPos, a, insertPos + 1, deletePos - insertPos);
+	    }
+	    a[insertPos] = v;
+	}
+	
+	/**
+	 * movePos(a, delPos, insertPos) = b のときの
+	 * [delPos, insertPos] を返す。
+	 * 存在しないときは null
+	 * @param a
+	 * @param b
+	 * @return
+	 */
+	public static int[] restoreMovePos(int[] a, int[] b) {
+		if (a.length != b.length) return null;
+	    int n = a.length;
+	    int l = 0;
+	    int r = n - 1;
+	    while (l < n && a[l] == b[l]) l++;
+	    if (l == n) return new int[] {0, 0};
+	    while (a[r] == b[r]) r--;
+	    // a[l] a[l+1] ... a[k]
+	    // a[l+1] ... a[k] a[l]
+	    // a = {1, 2, 3, 2};
+	    // b = {2, 1, 2, 3};
+	    // のようなケースがあるので、a[l+1] == b[l] だけでは移動方向を判定できない
+	    for (int i = l + 1; i < n; i++) {
+	        if (b[i - 1] != a[i]) break;
+	        if (i >= r && b[i] == a[l]) {
+	            return new int[] {l, i};
+	        }
+	    }
+	    for (int i = r - 1; i >= 0; i--) {
+	        if (b[i + 1] != a[i]) break;
+	        if (i <= l && b[i] == a[r]) {
+	            return new int[] {r, i};
+	        }
+	    }
+
+	    return null;
+	}
+	
 	public static double max(double[] a) {
 		double ret = Double.NEGATIVE_INFINITY;
 		for (int i = 0; i < a.length; ++i) {
 			ret = Math.max(ret, a[i]);
+		}
+		return ret;
+	}
+
+	/**
+	 * a[start, end) の最大値を返す。
+	 * 空の区間 (start >= end) のときは Double.NEGATIVE_INFINITY を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最大値
+	 */
+	// 未テスト
+	public static double max(double[] a, int start, int end) {
+		double ret = Double.NEGATIVE_INFINITY;
+		for (int i = start; i < end; ++i) {
+			ret = Math.max(ret, a[i]);
+		}
+		return ret;
+	}
+
+	/**
+	 * a の最小値を返す。
+	 * 空の配列のときは Double.POSITIVE_INFINITY を返す。
+	 * 計算量: O(N)
+	 *
+	 * @param a 配列
+	 * @return a の最小値
+	 */
+	// 未テスト
+	public static double min(double[] a) {
+		double ret = Double.POSITIVE_INFINITY;
+		for (int i = 0; i < a.length; ++i) {
+			ret = Math.min(ret, a[i]);
+		}
+		return ret;
+	}
+
+	/**
+	 * a[start, end) の最小値を返す。
+	 * 空の区間 (start >= end) のときは Double.POSITIVE_INFINITY を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最小値
+	 */
+	// 未テスト
+	public static double min(double[] a, int start, int end) {
+		double ret = Double.POSITIVE_INFINITY;
+		for (int i = start; i < end; ++i) {
+			ret = Math.min(ret, a[i]);
 		}
 		return ret;
 	}
@@ -3155,6 +3328,25 @@ public class ArrayUtils {
 		return ret;
 	}
 
+	/**
+	 * a[start, end) の最小値を返す。
+	 * 空の区間 (start >= end) のときは Integer.MAX_VALUE を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最小値
+	 */
+	// 未テスト
+	public static int min(int[] a, int start, int end) {
+		int ret = Integer.MAX_VALUE;
+		for (int i = start; i < end; ++i) {
+			ret = Math.min(ret, a[i]);
+		}
+		return ret;
+	}
+
 	public static long max(long[] a) {
 		long ret = Long.MIN_VALUE;
 		for (int i = 0; i < a.length; ++i) {
@@ -3163,20 +3355,31 @@ public class ArrayUtils {
 		return ret;
 	}
 
-	public static long max(long[][] a) {
+	/**
+	 * a[start, end) の最大値を返す。
+	 * 空の区間 (start >= end) のときは Long.MIN_VALUE を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最大値
+	 */
+	// 未テスト
+	public static long max(long[] a, int start, int end) {
 		long ret = Long.MIN_VALUE;
-		for (int i = 0; i < a.length; ++i) {
-			ret = Math.max(ret, max(a[i]));
+		for (int i = start; i < end; ++i) {
+			ret = Math.max(ret, a[i]);
 		}
 		return ret;
 	}
 
+	public static long max(long[][] a) {
+		return ArrayUtils2D.max(a);
+	}
+
 	public static int max(int[][] a) {
-		int ret = Integer.MIN_VALUE;
-		for (int i = 0; i < a.length; ++i) {
-			ret = Math.max(ret, max(a[i]));
-		}
-		return ret;
+		return ArrayUtils2D.max(a);
 	}
 
 	public static int max(int[][][] a) {
@@ -3220,6 +3423,25 @@ public class ArrayUtils {
 		return ret;
 	}
 
+	/**
+	 * a[start, end) の最大値を返す。
+	 * 空の区間 (start >= end) のときは Integer.MIN_VALUE を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最大値
+	 */
+	// 未テスト
+	public static int max(int[] a, int start, int end) {
+		int ret = Integer.MIN_VALUE;
+		for (int i = start; i < end; ++i) {
+			ret = Math.max(ret, a[i]);
+		}
+		return ret;
+	}
+
 	public static long min(long... a) {
 		long ret = Long.MAX_VALUE;
 		for (int i = 0; i < a.length; ++i) {
@@ -3228,21 +3450,32 @@ public class ArrayUtils {
 		return ret;
 	}
 
-	
-	public static long min(long[][] a) {
+	/**
+	 * a[start, end) の最小値を返す。
+	 * 空の区間 (start >= end) のときは Long.MAX_VALUE を返す。
+	 * 計算量: O(end - start)
+	 *
+	 * @param a 配列
+	 * @param start 開始インデックス（包含）
+	 * @param end 終了インデックス（排他）
+	 * @return a[start, end) の最小値
+	 */
+	// 未テスト
+	public static long min(long[] a, int start, int end) {
 		long ret = Long.MAX_VALUE;
-		for (int i = 0; i < a.length; ++i) {
-			ret = Math.min(ret, min(a[i]));
+		for (int i = start; i < end; ++i) {
+			ret = Math.min(ret, a[i]);
 		}
 		return ret;
 	}
 
+	
+	public static long min(long[][] a) {
+		return ArrayUtils2D.min(a);
+	}
+
 	public static int min(int[][] a) {
-		int ret = Integer.MAX_VALUE;
-		for (int i = 0; i < a.length; ++i) {
-			ret = Math.min(ret, min(a[i]));
-		}
-		return ret;
+		return ArrayUtils2D.min(a);
 	}
 	
 	public static int min(int[][][] a) {
@@ -3866,7 +4099,7 @@ public class ArrayUtils {
 	 * Arrays.comapreでソート
 	 */
 	public static void sort(int[][] a) {
-		Arrays.sort(a, (x, y)->Arrays.compare(x, y));
+		ArrayUtils2D.sort(a);
 	}
 
 	/**
@@ -3874,49 +4107,49 @@ public class ArrayUtils {
 	 * https://hos.ac/blog/#blog0002
 	 */
 	public static void sort(char[][] a) {
-		Arrays.sort(a, (x, y)->Arrays.compare(x, y));
+		ArrayUtils2D.sort(a);
 	}
 	
 	/**
 	 * Arrays.comapreでソート
 	 */
 	public static void sort(long[][] a) {
-		Arrays.sort(a, (x, y)->Arrays.compare(x, y));
+		ArrayUtils2D.sort(a);
 	}
 	
 	/**
 	 * Arrays.comapreでソート
 	 */
 	public static void sort(double[][] a) {
-		Arrays.sort(a, (x, y)->Arrays.compare(x, y));
+		ArrayUtils2D.sort(a);
 	}
 	
 	/**
 	 * -Arrays.comapreでソート
 	 */
 	public static void rsort(int[][] a) {
-		Arrays.sort(a, (x, y)->-Arrays.compare(x, y));
+		ArrayUtils2D.rsort(a);
 	}
 	
 	/**
 	 * -Arrays.comapreでソート
 	 */
 	public static void rsort(long[][] a) {
-		Arrays.sort(a, (x, y)->-Arrays.compare(x, y));
+		ArrayUtils2D.rsort(a);
 	}
 	
 	/**
 	 * -Arrays.comapreでソート
 	 */
 	public static void rsort(double[][] a) {
-		Arrays.sort(a, (x, y)->-Arrays.compare(x, y));
+		ArrayUtils2D.rsort(a);
 	}
 	
 	/**
 	 * -Arrays.comapreでソート
 	 */
 	public static void rsort(char[][] a) {
-		Arrays.sort(a, (x, y)->-Arrays.compare(x, y));
+		ArrayUtils2D.rsort(a);
 	}
 	
 
@@ -4005,39 +4238,21 @@ public class ArrayUtils {
 	 * 各行の長さが同じでない場合非対応
 	 */
 	public static char[][] transpose(char[][] a) {
-		char[][] b = new char[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.transpose(a);
 	}
 
 	/***
 	 * 各行の長さが同じでない場合非対応
 	 */
 	public static int[][] transpose(int[][] a) {
-		int[][] b = new int[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.transpose(a);
 	}
 
 	/***
 	 * 各行の長さが同じでない場合非対応
 	 */
 	public static long[][] transpose(long[][] a) {
-		long[][] b = new long[a[0].length][a.length];
-		for (int i = 0; i < a.length; ++i) {
-			for (int j = 0; j < a[i].length; ++j) {
-				b[j][i] = a[i][j];
-			}
-		}
-		return b;
+		return ArrayUtils2D.transpose(a);
 	}
 
 	public static long[] modAdd(long[] a, long[] b, long mod) {
@@ -4101,8 +4316,33 @@ public class ArrayUtils {
 	}
 
 	/**
+	 * {0,1,...,n-1} の k 要素部分集合を一様に選び、昇順の配列として返す。
+	 * 各反復 j = n-k,...,n-1 で [0,j] から一様に選び、既選択値なら j を追加する。
+	 * 計算量: O(k) 期待時間、O(k) 空間
+	 *
+	 * @param n 上限
+	 * @param k 選択する要素数
+	 * @param rnd 乱数生成器
+	 * @return 相異なる k 個の整数からなる昇順配列
+	 * @throws IllegalArgumentException n < 0 または k < 0 または k > n
+	 */
+	// 未テスト
+	public static int[] randomSampleFloyd(int n, int k, Random rnd) {
+		if (n < 0 || k < 0 || k > n) throw new IllegalArgumentException();
+		if (rnd == null) rnd = new Random();
+		java.util.HashSet<Integer> selected = new java.util.HashSet<>(Math.max(16, (int) (k / 0.75f) + 1));
+		for (int j = n - k; j < n; j++) {
+			int t = rnd.nextInt(j + 1);
+			if (!selected.add(t)) selected.add(j);
+		}
+		int[] result = selected.stream().mapToInt(Integer::intValue).toArray();
+		Arrays.sort(result);
+		return result;
+	}
+
+	/**
 	 * ret[i][j]=a[i*W+j];
-	 * 
+	 *
 	 * @param a
 	 * @param H
 	 * @param W
@@ -4120,10 +4360,30 @@ public class ArrayUtils {
 		return ret;
 	}
 	
+	/**
+	 * ret[i][j]=a[i*W+j];
+	 *
+	 * @param a
+	 * @param H
+	 * @param W
+	 * @return
+	 */
+	public static boolean[][] reshape(boolean[] a, int H, int W) {
+		if (a.length != H * W)
+			throw new AssertionError();
+		boolean[][] ret = new boolean[H][W];
+		for (int i = 0; i < H; i++) {
+			for (int j = 0; j < W; j++) {
+				ret[i][j] = a[i * W + j];
+			}
+		}
+		return ret;
+	}
+
 	
 	/**
 	 * ret[i][j]=a[i*W+j];
-	 * 
+	 *
 	 * @param a
 	 * @param H
 	 * @param W
@@ -4148,15 +4408,7 @@ public class ArrayUtils {
 	 * @return
 	 */
 	public static int[] flatten(int[][] a) {
-		int H = a.length;
-		int W = a[0].length;
-		int[] ret = new int[H * W];
-		for (int i = 0; i < H; i++) {
-			for (int j = 0; j < W; j++) {
-				ret[i * W + j] = a[i][j];
-			}
-		}
-		return ret;
+		return ArrayUtils2D.flatten(a);
 	}
 
 	
@@ -4536,16 +4788,7 @@ public class ArrayUtils {
 	}
 
 	public static char[][] sortq(char[][] a) {
-		//https://atcoder.jp/contests/abc343/submissions/74210454
-		char[][]b=copy(a);
-		Arrays.sort(b, (x, y) -> Arrays.compare(x, y));
-	    int pointer = 1;
-	    for (int i = 1; i < b.length; i++) {
-	        if (!Arrays.equals(b[pointer - 1], b[i])) {
-	            b[pointer++] = b[i];
-	        }
-	    }
-	    return Arrays.copyOf(b, pointer);
+		return ArrayUtils2D.sortq(a);
 	}
 
 	/**
@@ -4762,7 +5005,7 @@ public class ArrayUtils {
 	 * verified:
 	 */
 	public static int[] argSort(char[][] S) {
-		return ArrayUtils.argSort(S, (x, y)->Arrays.compare(x, y));
+		return ArrayUtils2D.argSort(S);
 	}
 
 	
@@ -4868,11 +5111,7 @@ public class ArrayUtils {
 	 * @return
 	 */
 	public static long sum(long[][] a) {
-		long v=0;
-		for (int i = 0; i < a.length; i++) {
-			v+=sum(a[i]);
-		}
-		return v;
+		return ArrayUtils2D.sum(a);
 	}
 	
 	public static long[] infs(int size) {
@@ -5024,30 +5263,18 @@ public class ArrayUtils {
      * @return
      */
     public static int[][] take(int[][] s, int[] indices) {
-    	int[][]b=new int[indices.length][];
-    	for (int i = 0; i < indices.length; i++) {
-			b[i]=s[indices[i]].clone();
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices);
+	}
     
     
     public static char[][] take(char[][] s, int[] indices) {
-    	char[][]b=new char[indices.length][];
-    	for (int i = 0; i < indices.length; i++) {
-			b[i]=s[indices[i]].clone();
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices);
+	}
     
     
     public static char[][] take(char[][] s, ArrayList<Integer> indices) {
-    	char[][]b=new char[indices.size()][];
-    	for (int i = 0; i < indices.size(); i++) {
-			b[i]=s[indices.get(i)].clone();
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices);
+	}
     
     /**
      * b[i][j]=a[indices1[i]][indces2[j]]となるbを返す。
@@ -5056,14 +5283,8 @@ public class ArrayUtils {
      * @return
      */
     public static int[][] take(int[][] s, int[] indices1, int[] indices2) {
-    	int[][]b=new int[indices1.length][indices2.length];
-    	for (int i = 0; i < indices1.length; i++) {
-    		for (int j = 0; j < indices2.length; j++) {
-				b[i][j]=s[indices1[i]][indices2[j]];
-			}
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices1, indices2);
+	}
     
 
     /**
@@ -5073,14 +5294,8 @@ public class ArrayUtils {
      * @return
      */
     public static boolean[][] take(boolean[][] s, int[] indices1, int[] indices2) {
-    	boolean[][]b=new boolean[indices1.length][indices2.length];
-    	for (int i = 0; i < indices1.length; i++) {
-    		for (int j = 0; j < indices2.length; j++) {
-				b[i][j]=s[indices1[i]][indices2[j]];
-			}
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices1, indices2);
+	}
     
     /**
      * b[i][j]=a[indices1[i]][indces2[j]]となるbを返す。
@@ -5089,14 +5304,8 @@ public class ArrayUtils {
      * @return
      */
     public static long[][] take(long[][] s, int[] indices1, int[] indices2) {
-    	long[][]b=new long[indices1.length][indices2.length];
-    	for (int i = 0; i < indices1.length; i++) {
-    		for (int j = 0; j < indices2.length; j++) {
-				b[i][j]=s[indices1[i]][indices2[j]];
-			}
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices1, indices2);
+	}
     
     /**
      * b[i][j]=a[indices1[i]][indces2[j]]となるbを返す。
@@ -5105,14 +5314,8 @@ public class ArrayUtils {
      * @return
      */
     public static long[][] take(long[][] s, ArrayList<Integer> indices1, ArrayList<Integer> indices2) {
-    	long[][]b=new long[indices1.size()][indices2.size()];
-    	for (int i = 0; i < indices1.size(); i++) {
-    		for (int j = 0; j < indices2.size(); j++) {
-				b[i][j]=s[indices1.get(i)][indices2.get(j)];
-			}
-		}
-    	return b;
-    }
+		return ArrayUtils2D.take(s, indices1, indices2);
+	}
     
     
     
@@ -5269,6 +5472,21 @@ public class ArrayUtils {
     	if (i==a.length)return -1;
     	return i;
     }
+    
+    /**
+     * f.test(a[i])=trueとなる最初のindexを返す。存在しないときは-1を返す。
+     * @param v
+     * @param a
+     * @return
+     */
+    public static int indexOf(char[] a, CharPredicate f) {
+        for (int i = 0; i < a.length; i++) {
+            if (f.test(a[i])) return i;
+        }
+        return -1;
+    }
+    
+    
     
     /**
      * a[i]=vとなる最初のindexを返す。存在しないときは-1を返す。

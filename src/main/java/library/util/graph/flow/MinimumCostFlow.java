@@ -1,4 +1,4 @@
-package library.util.graph;
+package library.util.graph.flow;
 
 import java.util.ArrayList;
 import java.util.Arrays;

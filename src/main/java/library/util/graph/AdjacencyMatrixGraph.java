@@ -1,7 +1,9 @@
 package library.util.graph;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Queue;
 
 import library.util.collections.IntArrayList;
@@ -342,5 +344,60 @@ public class AdjacencyMatrixGraph {
 		if (v < 0 || v >= N) {
 			throw new IndexOutOfBoundsException("Vertex index out of bounds: " + v);
 		}
+	}
+
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな AdjacencyMatrixGraph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 *
+	 * 計算量: O(N^2)
+	 *
+	 * @return 各連結成分を表す AdjacencyMatrixGraph の配列
+	 */
+	// 未テスト
+	public AdjacencyMatrixGraph[] connectedComponents() {
+		int[] color = new int[N];
+		Arrays.fill(color, -1);
+		Queue<Integer> que = new ArrayDeque<>();
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			if (color[i] != -1) continue;
+			que.add(i);
+			color[i] = k;
+			while (!que.isEmpty()) {
+				int v = que.poll();
+				for (int u = 0; u < N; u++) {
+					if (adj[v][u] && color[u] == -1) {
+						color[u] = k;
+						que.add(u);
+					}
+				}
+			}
+			k++;
+		}
+		@SuppressWarnings("unchecked")
+		List<Integer>[] comps = new List[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[color[i]].add(i);
+		}
+		AdjacencyMatrixGraph[] res = new AdjacencyMatrixGraph[k];
+		for (int c = 0; c < k; c++) {
+			List<Integer> comp = comps[c];
+			int sz = comp.size();
+			AdjacencyMatrixGraph g = new AdjacencyMatrixGraph(sz);
+			for (int i = 0; i < sz; i++) {
+				int u = comp.get(i);
+				for (int j = i; j < sz; j++) {
+					int v = comp.get(j);
+					if (adj[u][v]) {
+						g.addEdge(i, j);
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
 	}
 }

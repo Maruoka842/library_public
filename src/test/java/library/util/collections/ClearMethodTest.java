@@ -211,7 +211,7 @@ public class ClearMethodTest {
     @Test
     public void testTrieMapClear() {
         TrieMap map = new TrieMap();
-        map.add("hello".toCharArray(), 100);
+        map.put("hello".toCharArray(), 100);
         assertTrue(map.contains("hello".toCharArray()));
         assertEquals(1, map.size());
         map.clear();

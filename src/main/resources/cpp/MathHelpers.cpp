@@ -8,12 +8,28 @@ template<class T> auto jsignum(T x) {
 }
 template<class A, class B> auto jmin(const A& a, const B& b) {
     using C = common_type_t<A, B>;
+    if constexpr (std::is_floating_point_v<C>) {
+        if (std::isnan(a) || std::isnan(b)) return std::numeric_limits<C>::quiet_NaN();
+    }
     return std::min<C>(a, b);
 }
 template<class A, class B> auto jmax(const A& a, const B& b) {
     using C = common_type_t<A, B>;
+    if constexpr (std::is_floating_point_v<C>) {
+        if (std::isnan(a) || std::isnan(b)) return std::numeric_limits<C>::quiet_NaN();
+    }
     return std::max<C>(a, b);
 }
+// 未テスト
+// 計算量: O(1)
+template<class T> auto jround(T x) {
+    if constexpr (std::is_same_v<decay_t<T>, float>) {
+        return static_cast<int>(std::floor(x + 0.5f));
+    } else {
+        return static_cast<long long>(std::floor(x + 0.5));
+    }
+}
+
 template<class A, class B> auto jfloorDiv(A a, B b) {
     using C = common_type_t<A, B>;
     C x = a, y = b;
@@ -37,6 +53,14 @@ template<class A, class B> auto jfloorMod(A a, B b) {
     if ((rem != 0) && ((x ^ y) < 0)) rem += y;
     return rem;
 }
+// 未テスト
+// 計算量: O(1)
+template<class T, class U>
+auto jusr(T a, U b) {
+    using UT = std::make_unsigned_t<T>;
+    return static_cast<T>(static_cast<UT>(a) >> b);
+}
+
 template<class V, class L, class H> auto jclamp(V v, L l, H h) {
     return v < l ? l : (v > h ? h : v);
 }
@@ -45,6 +69,9 @@ template<class A, class B> auto jsubtractExact(A a, B b) { return a - b; }
 template<class A, class B> auto jmultiplyExact(A a, B b) { return a * b; }
 template<class T> auto jtoIntExact(T x) { return static_cast<int>(x); }
 template<class T> auto jnegateExact(T x) { return -x; }
+// 未テスト
+// 計算量: O(1)
+template<class T> auto jabsExact(T x) { return x < 0 ? -x : x; }
 // 未テスト
 // 計算量: O(1)
 template<class T> auto jincrementExact(T a) { return a + 1; }

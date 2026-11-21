@@ -8,6 +8,65 @@ import library.util.segtree.SegTreeFactory;
 import library.util.seq.SortedArrays;
 
 public class Intervals{
+	
+	/**
+	 * 半開区間で表された区間グラフの彩色多項式を mod で評価する。
+	 *　未テスト！！
+	 * @param intervals 各頂点の区間 [L_i, R_i)
+	 * @param x 評価する値
+	 * @param mod 法
+	 * @return 彩色多項式 P_G(x) mod mod
+	 */
+	public static int evaluateChromaticPolynomial(
+	        long[][] intervals, long x, int mod) {
+		//https://codeforces.com/gym/105385/submission/398327976
+	    if (mod <= 0) throw new IllegalArgumentException();
+
+	    int N = intervals.length;
+	    long[][] a = new long[N][];
+	    long[] xs = new long[N];
+	    int K = 0;
+
+	    long xm = Math.floorMod(x, (long) mod);
+	    long ans = 1 % mod;
+
+	    for (long[] interval : intervals) {
+	        long l = interval[0], r = interval[1];
+	        if (l > r) throw new IllegalArgumentException();
+
+	        if (l == r) {
+	            // 空区間に対応する頂点は孤立頂点。
+	            ans = ans * xm % mod;
+	        } else {
+	            a[K] = interval;
+	            xs[K++] = l;
+	        }
+	    }
+
+	    a = Arrays.copyOf(a, K);
+	    xs = Arrays.copyOf(xs, K);
+
+	    Arrays.sort(a, (u, v) -> Long.compare(u[1], v[1]));
+	    xs = ArrayUtils.sortq(xs);
+	    int M = xs.length;
+	    var seg=SegTreeFactory.intsum(M);
+	    // グラフGに対してN(x)がクリークとなるxを取ると、xの塗り方は各G-xの塗り方に対してxm-deg(x)通り
+	    for (int i = K - 1; i >= 0; i--) {
+	        long r = a[i][1];
+
+	        // 後続区間のうち、左端点が r 未満であるものの個数。
+	        int c = seg.prefixSum(SortedArrays.lower(xs, r));
+
+	        long factor = (xm - c) % mod;
+	        if (factor < 0) factor += mod;
+	        ans = ans * factor % mod;
+
+	        seg.add(SortedArrays.indexOf(xs, a[i][0]), 1);
+	    }
+	    return (int) ans;
+	}
+	
+	
 	/**
 	 * 半開区間[L, R)についてL[i] <= L[j] < R[i] <= R[j] となるi,jのunordered pairの個数
 	 * 0 <= L[i], R[i] <= 2Nとする。

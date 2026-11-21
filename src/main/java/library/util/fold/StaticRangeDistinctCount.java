@@ -42,7 +42,7 @@ public class StaticRangeDistinctCount {
     }
 
     private WaveletMatrix buildWM(int[] compressed) {
-        int[] prev = MultiPermutation.prevOccurences(compressed);
+        int[] prev = MultiPermutation.prevOccurrences(compressed);
         int[] c = new int[n];
         for (int i = 0; i < n; i++) {
             c[i] = prev[i] + 1;

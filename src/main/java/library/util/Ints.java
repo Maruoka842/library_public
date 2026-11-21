@@ -1,6 +1,16 @@
 package library.util;
 
 public class Ints {
+	
+	public static String toBinaryStringPadded(int x) {
+	    String s = Integer.toBinaryString(x);
+	    return "0".repeat(32 - s.length()) + s;
+	}
+	
+	public static String toBinaryStringPadded(int x, int len) {
+	    String s = Integer.toBinaryString(x);
+	    return "0".repeat(len - s.length()) + s;
+	}
 
 	public static String toFibonacciString(int a) {
 		long[]F=new long[92];

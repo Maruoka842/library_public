@@ -1,18 +1,59 @@
-template<class T> void jsort(vector<T>& a) { sort(a.begin(), a.end()); }
+template<class T> void jsort(vector<T>& a) { stable_sort(a.begin(), a.end(), jless_fn); }
 template<class T, class C> void jsort(vector<T>& a, C compare) {
-    sort(a.begin(), a.end(), [&](const T& x, const T& y) { return compare(x, y) < 0; });
+    if constexpr (is_same_v<decay_t<C>, nullptr_t>) {
+        stable_sort(a.begin(), a.end(), jless_fn);
+    } else {
+        using R = invoke_result_t<C, const T&, const T&>;
+        stable_sort(a.begin(), a.end(), [&](const T& x, const T& y) {
+            if constexpr (is_same_v<R, bool>) return compare(x, y);
+            else return compare(x, y) < 0;
+        });
+    }
 }
 // 未テスト
 // 計算量: O(N log N)
 template<class T> void jsort(vector<T>& a, int fromIndex, int toIndex) {
-    sort(a.begin() + fromIndex, a.begin() + toIndex);
+    stable_sort(a.begin() + fromIndex, a.begin() + toIndex, jless_fn);
 }
 // 未テスト
 // 計算量: O(N log N)
 template<class T, class C> void jsort(vector<T>& a, int fromIndex, int toIndex, C compare) {
-    sort(a.begin() + fromIndex, a.begin() + toIndex, [&](const T& x, const T& y) { return compare(x, y) < 0; });
+    if constexpr (is_same_v<decay_t<C>, nullptr_t>) {
+        stable_sort(a.begin() + fromIndex, a.begin() + toIndex, jless_fn);
+    } else {
+        using R = invoke_result_t<C, const T&, const T&>;
+        stable_sort(a.begin() + fromIndex, a.begin() + toIndex, [&](const T& x, const T& y) {
+            if constexpr (is_same_v<R, bool>) return compare(x, y);
+            else return compare(x, y) < 0;
+        });
+    }
 }
-template<class T, class U> void jfill(vector<T>& a, const U& x) { fill(a.begin(), a.end(), static_cast<T>(x)); }
+// 未テスト
+// 計算量: O(N)
+template<class T, class U> void jfill(vector<T>& a, const U& x) {
+    if constexpr (is_same_v<decay_t<U>, nullptr_t> && !is_pointer_v<T> && !is_same_v<T, JObject> && !is_same_v<T, JStringTokenizer>) {
+        if constexpr (is_default_constructible_v<T>) {
+            fill(a.begin(), a.end(), T{});
+        } else {
+            fill(a.begin(), a.end(), static_cast<T>(x));
+        }
+    } else {
+        fill(a.begin(), a.end(), static_cast<T>(x));
+    }
+}
+// 未テスト
+// 計算量: O(toIndex - fromIndex)
+template<class T, class U> void jfill(vector<T>& a, int fromIndex, int toIndex, const U& x) {
+    if constexpr (is_same_v<decay_t<U>, nullptr_t> && !is_pointer_v<T> && !is_same_v<T, JObject> && !is_same_v<T, JStringTokenizer>) {
+        if constexpr (is_default_constructible_v<T>) {
+            fill(a.begin() + fromIndex, a.begin() + toIndex, T{});
+        } else {
+            fill(a.begin() + fromIndex, a.begin() + toIndex, static_cast<T>(x));
+        }
+    } else {
+        fill(a.begin() + fromIndex, a.begin() + toIndex, static_cast<T>(x));
+    }
+}
 template<class T> vector<T> jcopyOf(const vector<T>& a, int n) {
     vector<T> result(n);
     copy_n(a.begin(), min<int>(a.size(), n), result.begin());

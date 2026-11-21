@@ -647,10 +647,9 @@ public class PolynomialFpDynamic2D implements UFDStrategy<long[][]>, ExactDivRin
 	 * @throws IllegalArgumentException {@code a(0, 0) != 0} または
 	 * {@code nx > mod} または {@code ny > mod} の場合
 	 *
-	 * <p>計算量: O(B(nx, ny))、空間計算量: O(nx * ny)。
-	 * B(nx, ny) は {@code mod (x^nx, y^ny)} での準線形な 2 変数多項式乗算時間
+	 * <p>計算量: O(M(nx, ny))、空間計算量: O(nx * ny)。
+	 * M(nx, ny) は {@code mod (x^nx, y^ny)} の 2 変数多項式乗算時間
 	 */
-	// 未テスト
 	public long[][] exp(long[][] a, int nx, int ny) {
 		if (nx <= 0 || ny <= 0) return zero();
 		if (nx > mod || ny > mod) throw new IllegalArgumentException("nx and ny must not exceed mod");

@@ -21,6 +21,10 @@ public class IntArrayList implements Iterable<Integer> {
 		a = new int[defaultCapacity];
 	}
 	
+	public int[] rawArray() {
+		return a;
+	}
+	
 	public IntArrayList(int initialCapacity) {
 		a = new int[initialCapacity];
 	}
@@ -49,6 +53,24 @@ public class IntArrayList implements Iterable<Integer> {
 		tail++;
 	}
 
+	/**
+	 * 添え字 index の位置に value を挿入し、index 以降の要素を 1 つ右へ移動する。
+	 * 計算量: O(N - index)（容量拡張時は O(N)）
+	 *
+	 * @param index 挿入位置。0 <= index <= size()
+	 * @param value 挿入する値
+	 * @throws IndexOutOfBoundsException 0 <= index <= size() が成り立たない場合
+	 */
+	// 未テスト
+	public void insert(int index, int value) {
+		if (index < 0 || index > tail) throw new IndexOutOfBoundsException();
+		ensureCapacity(tail + 1);
+		int moved = tail - index;
+		if (moved > 0) System.arraycopy(a, index, a, index + 1, moved);
+		a[index] = value;
+		tail++;
+	}
+
 	public void addAll(IntArrayList list) {
 		ensureCapacity(tail + list.tail);
 		System.arraycopy(list.a, 0, a, tail, list.tail);
@@ -66,6 +88,75 @@ public class IntArrayList implements Iterable<Integer> {
 		int ret = a[tail - 1];
 		tail--;
 		return ret;
+	}
+
+	/**
+	 * 添え字 i の要素を削除する。削除後は i より後ろの要素が 1 つ左へ移動する。
+	 * 計算量: O(N - i)
+	 *
+	 * @param i 削除する要素の添え字。0 <= i < size()
+	 * @throws IndexOutOfBoundsException 0 <= i < size() が成り立たない場合
+	 */
+	// 未テスト
+	public void removeAt(int i) {
+		if (i < 0 || i >= tail) throw new IndexOutOfBoundsException();
+		int moved = tail - i - 1;
+		if (moved > 0) System.arraycopy(a, i + 1, a, i, moved);
+		tail--;
+	}
+	
+	/**
+	 * 半開区間 [l, r) の要素を削除する。
+	 * 削除後は r 以降の要素が l まで移動する。
+	 *
+	 * 計算量: O(N - r)
+	 *
+	 * @param l 削除区間の開始位置。0 <= l <= r
+	 * @param r 削除区間の終了位置。r <= size()
+	 * @throws IndexOutOfBoundsException 0 <= l <= r <= size() が成り立たない場合
+	 */
+	public void removeRange(int l, int r) {
+	    if (l < 0 || l > r || r > tail) throw new IndexOutOfBoundsException();
+	    int moved = tail - r;
+	    if (moved > 0) System.arraycopy(a, r, a, l, moved);
+	    tail -= r - l;
+	}
+
+	
+	/**
+	 * リスト list の全要素を添え字 l の位置に挿入する。
+	 *
+	 * 計算量: O(N-l+M)（M = list.size()、容量拡張時は O(N+M)）
+	 *
+	 * @param l 挿入位置。0 <= l <= size()
+	 * @param list 挿入する要素列
+	 */
+	public void insertRange(int l, IntArrayList list) {
+	    if (l < 0 || l > tail) throw new IndexOutOfBoundsException();
+	    int len = list.tail;
+	    ensureCapacity(tail + len);
+	    System.arraycopy(a, l, a, l + len, tail - l);
+	    System.arraycopy(list.a, 0, a, l, len);
+	    tail += len;
+	}
+	
+	
+	/**
+	 * 値 v と等しい最初の要素を削除する。
+	 * 計算量: O(N)
+	 *
+	 * @param v 削除する値
+	 * @return v と等しい要素が存在して削除した場合は true
+	 */
+	// 未テスト
+	public boolean remove(int v) {
+		for (int i = 0; i < tail; i++) {
+			if (a[i] == v) {
+				removeAt(i);
+				return true;
+			}
+		}
+		return false;
 	}
 	
 	public boolean isEmpty() {
@@ -137,6 +228,20 @@ public class IntArrayList implements Iterable<Integer> {
 			++s;--t;
 		}
 	}
+	
+	public void reverse(int s, int t) {
+		t--;
+		while (s < t) {
+			{
+				var tmp = a[s];
+				a[s] = a[t];
+				a[t] = tmp;
+			}
+			++s;--t;
+		}
+	}
+
+	
 	
     @Override
     public PrimitiveIterator.OfInt iterator() {

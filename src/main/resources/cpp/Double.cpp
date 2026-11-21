@@ -1,6 +1,6 @@
 struct JDouble {
     static constexpr double MAX_VALUE = numeric_limits<double>::max();
-    static constexpr double MIN_VALUE = numeric_limits<double>::min();
+    static constexpr double MIN_VALUE = numeric_limits<double>::denorm_min();
     static constexpr double NaN = numeric_limits<double>::quiet_NaN();
     static constexpr double POSITIVE_INFINITY = numeric_limits<double>::infinity();
     static constexpr double NEGATIVE_INFINITY = -numeric_limits<double>::infinity();
@@ -54,7 +54,9 @@ struct JDouble {
         snprintf(buf, sizeof(buf), "%a", d);
         return JString(buf);
     }
-    static JString toString(double x) { return std::to_string(x); }
+    // 未テスト
+    // 計算量: O(1)
+    static JString toString(double x) { return jdouble_to_string(x); }
     static double parseDouble(const JString& x) { return stod(x); }
     static double valueOf(const JString& x) { return stod(x); }
     static double valueOf(double x) { return x; }

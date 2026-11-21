@@ -1,6 +1,7 @@
-package library.util.graph;
+package library.util.graph.flow;
 
 import java.util.ArrayList;
+import library.util.graph.Edge;
 
 public class MaxFlowWithLowerBound {
 	int n;

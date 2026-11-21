@@ -27,6 +27,7 @@ import library.util.Ints;
 import library.util.collections.ArrayLists;
 import library.util.collections.IntArrayList;
 import library.util.collections.IntDeque;
+import library.util.graph.flow.MaxFlow;
 import library.util.graph.tree.Forest;
 import library.util.graph.tree.Tree;
 import library.util.unionfind.UnionFind;
@@ -126,6 +127,30 @@ public class Graph {
 	}
 
 	/**
+	 * 辺 {u, v} を細分化 (subdivision) する。
+	 * 辺 {u, v} を1本削除し、新たな頂点 w を1つ追加して、2本の辺 {u, w} および {w, v} を追加する。
+	 * 自己ループ u == v の場合は辺 {u, u} を削除し、u と w の間に2本の辺を追加する。
+	 * <ul>
+	 *   <li>事前条件: 0 <= u < N, 0 <= v < N, かつ辺 {u, v} が1本以上存在する。</li>
+	 *   <li>事後条件: 頂点数 N が 1 増加し、辺数 M が 1 増加する。新しく追加された頂点 w (インデックス N - 1) を返す。</li>
+	 *   <li>副作用: このグラフの頂点数・辺数・隣接リストを破壊的に変更する。</li>
+	 *   <li>計算量: ならし O(deg(u) + deg(v))</li>
+	 *   <li>例外: 辺 {u, v} が存在しない場合は AssertionError を送出する。</li>
+	 * </ul>
+	 * 未テスト
+	 * @param u 端点u
+	 * @param v 端点v
+	 * @return 新しく追加された頂点 w のインデックス
+	 */
+	public int subdivideEdge(int u, int v) {
+		removeEdge(u, v);
+		int w = addNode();
+		addEdge(u, w);
+		addEdge(w, v);
+		return w;
+	}
+
+	/**
 	 * 未テスト
 	 * 契約:
 	 * <ul>
@@ -168,6 +193,31 @@ public class Graph {
 		adj[v].set(iv, adj[v].peekLast());
 		adj[v].pollLast();
 		--M;
+	}
+
+	/**
+	 * 頂点 {@code v} に接続する全辺を削除する。各辺の両端の隣接リストから対応する要素を1個ずつ削除する。
+	 * <ul>
+	 * <li>事後条件: {@code adj[v]} は空になり、他の頂点間の辺は保持され、{@code M' = M - deg(v)}。</li>
+	 * <li>副作用: このグラフの隣接リストと辺数を破壊的に変更する。</li>
+	 * <li>計算量: 時間計算量 {@code O(deg(v) + sum(deg(u)))}, 追加空間計算量 {@code O(1)}。{@code u} は {@code v} に隣接する {@code v} 以外の頂点。</li>
+	 * </ul>
+	 * 未テスト
+	 * @param v 対象頂点
+	 */
+	public void clearVertex(int v) {
+		IntArrayList neighbors = adj[v];
+		for (int i = 0, size = neighbors.size(); i < size; ++i) {
+			int u = neighbors.get(i);
+			if (u == v) continue;
+			IntArrayList adjacency = adj[u];
+			int j = 0;
+			while (adjacency.get(j) != v) ++j;
+			adjacency.set(j, adjacency.peekLast());
+			adjacency.pollLast();
+		}
+		M -= neighbors.size();
+		neighbors.clear();
 	}
 
 	/**
@@ -716,6 +766,61 @@ public class Graph {
 		return order;
 	}
 	
+	/**
+	 * 始点集合 {@code sources} から、距離 {@code cutoffDistance} 以内で到達可能な頂点列を BFS 順に返す。
+	 * {@code dist} は BFS の途中状態の距離配列と見なし、{@code sources} の各頂点 {@code s} について
+	 * {@code dist[s]} を上書きせずにそのまま探索の初期距離として使用する。
+	 * 隣接頂点 {@code u} について {@code dist[u] > d + 1} のときのみ {@code dist[u] = d + 1} と更新して探索を継続する。
+	 *
+	 * <p>計算量: 到達可能な頂点数を V、到達可能な辺数を E として O(V + E)。空間計算量 O(V)。</p>
+	 *
+	 * @param sources 始点集合
+	 * @param dist 各頂点への最短距離を記録する配列（呼び出し前の各始点 {@code s} の {@code dist[s]} はそのまま用いられる）
+	 * @param cutoffDistance 探索する最大距離（負数の場合は空配列を返す）
+	 * @return 到達可能な頂点を BFS 順に格納した配列
+	 */
+	// 未テスト
+	public int[] bfs(int[] sources, int[] dist, int cutoffDistance) {
+		if (cutoffDistance < 0 || sources == null || sources.length == 0 || N == 0) {
+			return new int[0];
+		}
+		IntDeque que = new IntDeque();
+		IntArrayList res = new IntArrayList();
+
+		int baseDist = dist[sources[0]];
+		for (int s : sources) {
+			if (dist[s] != baseDist) {
+				throw new AssertionError("sources have inconsistent distances");
+			}
+		}
+
+		if (baseDist > cutoffDistance) {
+			return new int[0];
+		}
+
+		for (int s : sources) {
+			que.addLast(s);
+			res.add(s);
+		}
+
+		while (que.isNonEmpty()) {
+			int v = que.pollFirst();
+			int d = dist[v];
+			if (d >= cutoffDistance) continue;
+			IntArrayList nexts = adj[v];
+			for (int i = 0; i < nexts.size(); i++) {
+				int u = nexts.get(i);
+				if (dist[u] > d + 1) {
+					dist[u] = d + 1;
+					res.add(u);
+					que.addLast(u);
+				}
+			}
+		}
+
+		return res.toArray();
+	}
+
 	/***
 	 * srcから到達可能な頂点をBFS順に並べたArrayListを返す。
 	 * HashSetを使っているので多分遅い。
@@ -770,6 +875,45 @@ public class Graph {
 			ret[color[i]].add(i);
 		}
 		return ret;
+	}
+
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな Graph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は components() と同様に、各成分に含まれる最小頂点番号の昇順となる。
+	 * 多重辺や自己ループを含むすべての辺情報が各部分グラフに保持される。
+	 *
+	 * 計算量: O(N + M)
+	 *
+	 * @return 各連結成分を表す Graph の配列
+	 */
+	// 未テスト
+	public Graph[] connectedComponents() {
+		ArrayList<Integer>[] comps = components();
+		int k = comps.length;
+		Graph[] res = new Graph[k];
+		int[] mapping = new int[N];
+		for (int c = 0; c < k; c++) {
+			ArrayList<Integer> comp = comps[c];
+			int sz = comp.size();
+			for (int i = 0; i < sz; i++) {
+				mapping[comp.get(i)] = i;
+			}
+			Graph g = new Graph(sz);
+			for (int u : comp) {
+				int newU = mapping[u];
+				for (int v : adj[u]) {
+					if (u < v) {
+						g.addEdge(newU, mapping[v]);
+					} else if (u == v) {
+						// 自己ループの二重追加を防ぐ
+						g.addEdge(newU, newU);
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
 	}
 	
 	public boolean isConnected() {

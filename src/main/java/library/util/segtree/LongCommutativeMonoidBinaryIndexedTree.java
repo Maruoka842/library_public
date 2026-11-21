@@ -44,6 +44,19 @@ public class LongCommutativeMonoidBinaryIndexedTree {
 			v[i] = strategy.mul(v[i], val);
 		}
 	}
+	
+	/**未テスト
+	 * 
+	 * @param val
+	 */
+	public void fill(long val) {
+		Arrays.fill(v, val);
+		for (int i = 1; i <= n; i++) {
+			int j = i + (i & -i);
+			if (j < v.length)
+				v[j] = strategy.mul(v[j], v[i]);
+		}
+	}
 
 	/**
 	 * a_0 * a_1 * ... * a_(i-1) を計算する。

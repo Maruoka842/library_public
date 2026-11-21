@@ -8,6 +8,7 @@ import library.util.Itertools;
 import library.util.MathUtils;
 import library.util.polynomial.PolynomialFp;
 import library.util.polynomial.PolynomialFpDynamic;
+import library.util.polynomial.PolynomialFpDynamic2D;
 
 /**
  * 無向完全グラフをハミルトンパス、ハミルトンサイクル、マッチングなどに分解するユーティリティクラス。
@@ -68,9 +69,9 @@ public class GraphCount {
 	 * @param n         分割する要素の総数
 	 * @param maxBlocks 考慮する最大ブロック数（k ≤ maxBlocks）
 	 * @return 長さ maxBlocks+1 の配列 a で、a[k] は n 個の要素を k 個の非空集合に分割する方法の数 @see
-	 *         https://atcoder.jp/contests/abc327/submissions/72331809
 	 */
-	public static long[] countKnPartition(long n, int maxBlocks, long mod) {
+	public static long[] countKnUnorderedPartition(long n, int maxBlocks, long mod) {
+		//https://atcoder.jp/contests/abc327/submissions/72331809
 		Fp fp = new Fp(mod);
 		var P = PolynomialFpDynamic.of(mod);
 		long[] f = new long[maxBlocks + 1];
@@ -103,7 +104,7 @@ public class GraphCount {
 	 *
 	 * 未テスト
 	 */
-	public static long[] countKnPartitionFixedK(int k, int maxN, long mod) {
+	public static long[] countKnUnorderedPartitionFixedK(int k, int maxN, long mod) {
 		if (maxN < 0) {
 			return new long[0];
 		}
@@ -162,6 +163,7 @@ public class GraphCount {
 		Fp fp = new Fp(mod);
 		var P = PolynomialFpDynamic.of(mod);
 		long[] f = new long[N];
+		//各頂点を白黒で塗り分けて白から黒へ辺を貼る
 		long i2 = fp.inv(2);
 		for (int i = 0; i < N; i++) {
 			f[i] = fp.pow(i2, 1L * i * (i - 1) / 2) * fp.ifac(i) % mod;
@@ -175,6 +177,26 @@ public class GraphCount {
 			f[i] = f[i] * i2 % mod;
 		}
 		return f;
+	}
+	
+	public long[][] bipartiteGraphEGFwithEdges(int N, long mod) {
+		var P = PolynomialFpDynamic.of(mod);
+		var P2 = PolynomialFpDynamic2D.of(mod);
+		Fp fp=new Fp(mod);
+		long[][] f = new long[N][N*(N-1)/2];
+		for (int i = 0; i < N; i++) {
+			var a = P.powFull(new long[] {1, 1}, i * (i - 1) / 2);
+			a=Arrays.copyOf(a, N*(N-1)/2+5);
+			f[i] = P.inv(a);
+			f[i] = P.mul(f[i], fp.ifac(i));
+		}
+		f = P2.mul(f, f);
+		for (int i = 0; i < f.length; i++) {
+			f[i] = P.mul(f[i], P.powFull(new long[] {1, 1}, i * (i - 1)/2));
+		}
+		f = P2.log(f, N, N*(N-1)/2);
+		f = P2.mul(f, fp.inv(2));
+		return P2.exp(f, N, N*(N-1)/2);
 	}
 
 	/**

@@ -1,11 +1,13 @@
 package library.util.collections;
 
 import java.util.Arrays;
+import java.util.NoSuchElementException;
+import java.util.PrimitiveIterator;
 
 /**
  * 整数全射域 [0, n) 上の有限集合 S を管理する Sparse Set。
  */
-public class IntSparseSet {
+public class IntSparseSet implements Iterable<Integer> {
 
 	/** 各要素の dense 配列内インデックスを保持する配列 */
 	private final int[] sparse;
@@ -183,4 +185,23 @@ public class IntSparseSet {
 			throw new IndexOutOfBoundsException(
 					"x=" + x + ", range=[0, " + dense.length + ")");
 	}
+	
+	@Override
+	public PrimitiveIterator.OfInt iterator() {
+		return new PrimitiveIterator.OfInt() {
+			private int index;
+
+			@Override
+			public boolean hasNext() {
+				return index < size;
+			}
+
+			@Override
+			public int nextInt() {
+				if (!hasNext())
+					throw new NoSuchElementException();
+				return dense[index++];
+			}
+		};
+	}	
 }

@@ -1,4 +1,6 @@
-package library.util.graph;
+package library.util.graph.flow;
+
+import library.util.graph.LongValueDigraph;
 
 public class MaxMarketClearingSurplus {
 	int N;
@@ -36,10 +38,8 @@ public class MaxMarketClearingSurplus {
 	
 	/**
 	 * p[v] ≤  w
-<<<<<<< HEAD
-	 * @param u
 	 * @param v
-	 * @return
+	 * @param w
 	 */
 	public void forceLeq(int v, long w) {
 		//https://atcoder.jp/contests/abc397/submissions/72662342
@@ -51,8 +51,7 @@ public class MaxMarketClearingSurplus {
 	/**
 	 * w ≤ p[u]
 	 * @param u
-	 * @param to
-	 * @return
+	 * @param w
 	 */
 	public void forceGeq(int u, long w) {
 		//https://atcoder.jp/contests/abc397/submissions/72662342
@@ -62,19 +61,8 @@ public class MaxMarketClearingSurplus {
 
 	
 	/**
-	 * c >= 0 を仮定（c < 0 なら目的関数を好きなだけ大きくできる）。
-	 * 目的関数に -c max(0, p[v] - p[u] - w) を足す。
-	 * 
-	 * すなわち、
-	 * p[v] ≤ p[u] + z[e] + w  </br>
-	 * z[e] ≥ 0
-	 * を制約に追加し、目的関数から c z[e] を引くことと同じ。
-	 * 
-=======
->>>>>>> 30634c20a098c86a0bb1768605c68e3ab51bab0e
-	 * @param u
 	 * @param v
-	 * @return
+	 * @param w
 	 */
 	public void addHardConstraint2(int v, long w) {
 		negCostAndINFCap |= w < 0;
@@ -85,7 +73,7 @@ public class MaxMarketClearingSurplus {
 	/**
 	 * 0 ≤ p[u] + w
 	 * @param u
-	 * @param to
+	 * @param w
 	 * @return
 	 * https://atcoder.jp/contests/abc397/submissions/72662342
 	 */
@@ -117,9 +105,9 @@ public class MaxMarketClearingSurplus {
 	 * c >= 0 を仮定（c < 0 なら目的関数を好きなだけ大きくできる）。
 	 * 目的関数に -c max(0, p[v] - w) を足す。
 	 * 
-	 * @param u
 	 * @param v
-	 * @return
+	 * @param c
+	 * @param w
 	 */
 	public void addSoftConstraintWithPenalty2(int v, long c, long w) {
 		if (c < 0) throw new AssertionError();
@@ -132,8 +120,8 @@ public class MaxMarketClearingSurplus {
 	 * 目的関数に -c max(0, - p[u] - w) を足す。
 	 * 
 	 * @param u
-	 * @param to
-	 * @return
+	 * @param c
+	 * @param w
 	 */
 	public void addSoftConstraintWithPenalty3(int u, long c, long w) {
 		if (c < 0) throw new AssertionError();

@@ -325,6 +325,69 @@ public class DoubleValueGraph {
 		return true;
 	}
 
+	/**
+	 * 各連結成分を誘導部分グラフとして独立した新たな DoubleValueGraph インスタンスに再構築し、その配列を返す。
+	 * 各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 * 辺のコスト、多重辺、自己ループを含むすべての辺情報が各部分グラフに保持される。
+	 *
+	 * 計算量: O(N + M)
+	 *
+	 * @return 各連結成分を表す DoubleValueGraph の配列
+	 */
+	// 未テスト
+	public DoubleValueGraph[] connectedComponents() {
+		int[] color = new int[N];
+		Arrays.fill(color, -1);
+		Queue<Integer> que = new ArrayDeque<>();
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			if (color[i] != -1) continue;
+			que.add(i);
+			color[i] = k;
+			while (!que.isEmpty()) {
+				int v = que.poll();
+				for (DoubleValueEdge e : adj[v]) {
+					int u = e.dst;
+					if (color[u] != -1) continue;
+					color[u] = k;
+					que.add(u);
+				}
+			}
+			k++;
+		}
+		@SuppressWarnings("unchecked")
+		ArrayList<Integer>[] comps = new ArrayList[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[color[i]].add(i);
+		}
+		DoubleValueGraph[] res = new DoubleValueGraph[k];
+		int[] mapping = new int[N];
+		for (int c = 0; c < k; c++) {
+			ArrayList<Integer> comp = comps[c];
+			int sz = comp.size();
+			for (int i = 0; i < sz; i++) {
+				mapping[comp.get(i)] = i;
+			}
+			DoubleValueGraph g = new DoubleValueGraph(sz);
+			for (int u : comp) {
+				int newU = mapping[u];
+				for (DoubleValueEdge e : adj[u]) {
+					int v = e.dst;
+					if (u < v) {
+						g.addEdge(newU, mapping[v], e.cost);
+					} else if (u == v) {
+						g.adj[newU].add(new DoubleValueEdge(newU, newU, e.cost));
+						g.M++;
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
+	}
+
 	public ArrayList<Result>[] distancesTopK(Iterable<Integer> source, int K) {
 		class State implements Comparable<State> {
 			double dist;

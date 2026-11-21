@@ -52,6 +52,40 @@ public class LongArrayList implements Iterable<Long> {
 		len--;
 		return ret;
 	}
+
+	/**
+	 * 添え字 i の要素を削除し、i より後ろの要素を 1 つ左へ移動する。
+	 * 計算量: O(N - i)
+	 *
+	 * @param i 削除する要素の添え字。0 <= i < size()
+	 * @throws IndexOutOfBoundsException 0 <= i < size() が成り立たない場合
+	 */
+	// 未テスト
+	public void removeAt(int i) {
+		if (i < 0 || i >= len) throw new IndexOutOfBoundsException();
+		int moved = len - i - 1;
+		if (moved > 0) System.arraycopy(a, i + 1, a, i, moved);
+		len--;
+		tail--;
+	}
+
+	/**
+	 * 値 v と等しい最初の要素を削除する。
+	 * 計算量: O(N)
+	 *
+	 * @param v 削除する値
+	 * @return v と等しい要素が存在して削除した場合は true
+	 */
+	// 未テスト
+	public boolean remove(long v) {
+		for (int i = 0; i < len; i++) {
+			if (a[i] == v) {
+				removeAt(i);
+				return true;
+			}
+		}
+		return false;
+	}
 	
 	public boolean isEmpty() {
 		return len == 0;

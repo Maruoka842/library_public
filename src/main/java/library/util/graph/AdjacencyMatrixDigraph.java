@@ -1,7 +1,9 @@
 package library.util.graph;
 
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.List;
 import java.util.Queue;
 
 import library.util.collections.IntQueue;
@@ -428,5 +430,59 @@ public class AdjacencyMatrixDigraph {
 		if (v < 0 || v >= N) {
 			throw new IndexOutOfBoundsException("Vertex index out of bounds: " + v);
 		}
+	}
+
+	/**
+	 * 各弱連結成分を誘導部分グラフとして独立した新たな AdjacencyMatrixDigraph インスタンスに再構築し、その配列を返す。
+	 * 辺の向きを無視した連結成分（弱連結成分）ごとに分解し、各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 *
+	 * 計算量: O(N^2)
+	 *
+	 * @return 各弱連結成分を表す AdjacencyMatrixDigraph の配列
+	 */
+	// 未テスト
+	public AdjacencyMatrixDigraph[] connectedComponents() {
+		library.util.unionfind.UnionFind uf = new library.util.unionfind.UnionFind(N);
+		for (int u = 0; u < N; u++) {
+			for (int v = 0; v < N; v++) {
+				if (adj[u][v]) {
+					uf.union(u, v);
+				}
+			}
+		}
+		int[] compId = new int[N];
+		Arrays.fill(compId, -1);
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			int root = uf.root(i);
+			if (compId[root] == -1) {
+				compId[root] = k++;
+			}
+			compId[i] = compId[root];
+		}
+		@SuppressWarnings("unchecked")
+		List<Integer>[] comps = new List[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[compId[i]].add(i);
+		}
+		AdjacencyMatrixDigraph[] res = new AdjacencyMatrixDigraph[k];
+		for (int c = 0; c < k; c++) {
+			List<Integer> comp = comps[c];
+			int sz = comp.size();
+			AdjacencyMatrixDigraph g = new AdjacencyMatrixDigraph(sz);
+			for (int i = 0; i < sz; i++) {
+				int u = comp.get(i);
+				for (int j = 0; j < sz; j++) {
+					int v = comp.get(j);
+					if (adj[u][v]) {
+						g.addEdge(i, j);
+					}
+				}
+			}
+			res[c] = g;
+		}
+		return res;
 	}
 }

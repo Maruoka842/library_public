@@ -19,7 +19,7 @@ public class SmallSideBoundedAssignmentTest {
         int[] lower = {1, 1};
         int[] upper = {2, 2};
 
-        SmallSideBoundedAssignment.Result res = SmallSideBoundedAssignment.solveMax(value, lower, upper);
+        SmallSideBoundedAssignmentMaximaization.Result res = SmallSideBoundedAssignmentMaximaization.solveMax(value, lower, upper);
         assertEquals(60, res.maxValue);
         assertNotNull(res.assignment);
         assertEquals(3, res.assignment.length);
@@ -51,7 +51,7 @@ public class SmallSideBoundedAssignmentTest {
         };
         int[] quota = {1, 2, 1};
 
-        SmallSideBoundedAssignment.Result res = SmallSideBoundedAssignment.solveMaxExact(value, quota);
+        SmallSideBoundedAssignmentMaximaization.Result res = SmallSideBoundedAssignmentMaximaization.solveMaxExact(value, quota);
         assertNotNull(res.assignment);
 
         int[] count = new int[3];
@@ -70,43 +70,43 @@ public class SmallSideBoundedAssignmentTest {
     public void testValidationAndExceptions() {
         // Null inputs
         assertThrows(NullPointerException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(null, new int[]{1}, new int[]{1});
+            SmallSideBoundedAssignmentMaximaization.solveMax(null, new int[]{1}, new int[]{1});
         });
         assertThrows(NullPointerException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1}}, null, new int[]{1});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1}}, null, new int[]{1});
         });
         assertThrows(NullPointerException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1}}, new int[]{1}, null);
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1}}, new int[]{1}, null);
         });
 
         // Length mismatch
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1}}, new int[]{1}, new int[]{1, 2});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1}}, new int[]{1}, new int[]{1, 2});
         });
 
         // Invalid group bounds (lower > upper)
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1, 2}}, new int[]{2, 1}, new int[]{1, 2});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1, 2}}, new int[]{2, 1}, new int[]{1, 2});
         });
 
         // Invalid group bounds (negative bounds)
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1}}, new int[]{-1}, new int[]{1});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1}}, new int[]{-1}, new int[]{1});
         });
 
         // Infeasible bounds (sumLower > N)
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1, 2}}, new int[]{2, 2}, new int[]{2, 2});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1, 2}}, new int[]{2, 2}, new int[]{2, 2});
         });
 
         // Infeasible bounds (sumUpper < N)
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1, 2}, {3, 4}}, new int[]{0, 0}, new int[]{0, 1});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1, 2}, {3, 4}}, new int[]{0, 0}, new int[]{0, 1});
         });
 
         // Invalid value array dimension (each row must be length K)
         assertThrows(IllegalArgumentException.class, () -> {
-            SmallSideBoundedAssignment.solveMax(new long[][]{{1, 2}, {3}}, new int[]{1, 1}, new int[]{2, 2});
+            SmallSideBoundedAssignmentMaximaization.solveMax(new long[][]{{1, 2}, {3}}, new int[]{1, 1}, new int[]{2, 2});
         });
     }
 
@@ -149,7 +149,7 @@ public class SmallSideBoundedAssignmentTest {
             }
 
             // Solve using SmallSideBoundedAssignment
-            SmallSideBoundedAssignment.Result actual = SmallSideBoundedAssignment.solveMax(value, lower, upper);
+            SmallSideBoundedAssignmentMaximaization.Result actual = SmallSideBoundedAssignmentMaximaization.solveMax(value, lower, upper);
 
             // Solve using brute force
             BruteForceResult expected = solveBruteForce(value, lower, upper);

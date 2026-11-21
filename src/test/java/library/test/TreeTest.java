@@ -7,6 +7,9 @@ import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+import java.util.ArrayDeque;
+import java.util.Arrays;
+
 import org.junit.jupiter.api.Test;
 
 import library.util.graph.tree.Tree;
@@ -310,6 +313,124 @@ public class TreeTest {
 
 		// The subtree of v is the component of v in the forest t \ { (v, parentOfV) }.
 		return countSubtreeDfs(t, v, parentOfV, visited);
+	}
+
+	@Test
+	public void testDiameter_SingleNode() {
+		Tree t = new Tree(1);
+		Tree.DiameterResult res = t.diameter();
+		assertEquals(0, res.length());
+		assertEquals(0, res.u());
+		assertEquals(0, res.v());
+		assertArrayEquals(new int[] { 0 }, res.centers());
+	}
+
+	@Test
+	public void testDiameter_TwoNodes() {
+		Tree t = new Tree(2);
+		t.addEdge(0, 1);
+		Tree.DiameterResult res = t.diameter();
+		assertEquals(1, res.length());
+		assertTrue((res.u() == 0 && res.v() == 1) || (res.u() == 1 && res.v() == 0));
+		assertArrayEquals(new int[] { 0, 1 }, res.centers());
+	}
+
+	@Test
+	public void testDiameter_PathOddLength() {
+		// 0 - 1 - 2 - 3 (length 3, 4 nodes)
+		Tree t = Tree.path(4);
+		Tree.DiameterResult res = t.diameter();
+		assertEquals(3, res.length());
+		assertTrue((res.u() == 0 && res.v() == 3) || (res.u() == 3 && res.v() == 0));
+		assertArrayEquals(new int[] { 1, 2 }, res.centers());
+	}
+
+	@Test
+	public void testDiameter_PathEvenLength() {
+		// 0 - 1 - 2 - 3 - 4 (length 4, 5 nodes)
+		Tree t = Tree.path(5);
+		Tree.DiameterResult res = t.diameter();
+		assertEquals(4, res.length());
+		assertTrue((res.u() == 0 && res.v() == 4) || (res.u() == 4 && res.v() == 0));
+		assertArrayEquals(new int[] { 2 }, res.centers());
+	}
+
+	@Test
+	public void testDiameter_StarGraph() {
+		// 0 is center, 1, 2, 3, 4 are leaves
+		Tree t = Tree.star(5);
+		Tree.DiameterResult res = t.diameter();
+		assertEquals(2, res.length());
+		assertTrue(res.u() != 0 && res.v() != 0 && res.u() != res.v());
+		assertArrayEquals(new int[] { 0 }, res.centers());
+	}
+
+	@Test
+	public void testDiameter_EmptyThrows() {
+		Tree t = new Tree(0);
+		assertThrows(IllegalArgumentException.class, () -> t.diameter());
+	}
+
+	@Test
+	public void testDiameter_RandomStressTest() {
+		java.util.Random rnd = new java.util.Random(42);
+		for (int t_case = 0; t_case < 100; t_case++) {
+			int N = rnd.nextInt(50) + 1;
+			Tree t = Tree.randomTree(N);
+			Tree.DiameterResult res = t.diameter();
+
+			// Naive computation of all-pairs shortest paths
+			int[][] dist = new int[N][N];
+			for (int i = 0; i < N; i++) {
+				Arrays.fill(dist[i], -1);
+				dist[i][i] = 0;
+				ArrayDeque<Integer> q = new ArrayDeque<>();
+				q.add(i);
+				while (!q.isEmpty()) {
+					int curr = q.poll();
+					for (int next : t.adj[curr]) {
+						if (dist[i][next] == -1) {
+							dist[i][next] = dist[i][curr] + 1;
+							q.add(next);
+						}
+					}
+				}
+			}
+
+			int maxDist = 0;
+			for (int i = 0; i < N; i++) {
+				for (int j = 0; j < N; j++) {
+					if (dist[i][j] > maxDist) {
+						maxDist = dist[i][j];
+					}
+				}
+			}
+
+			assertEquals(maxDist, res.length(), "Diameter length mismatch at test case " + t_case);
+			assertEquals(res.length(), dist[res.u()][res.v()], "Distance between u and v mismatch");
+
+			// Check centers
+			if (res.length() % 2 == 0) {
+				assertEquals(1, res.centers().length);
+				int c = res.centers()[0];
+				assertEquals(res.length() / 2, dist[res.u()][c]);
+				assertEquals(res.length() / 2, dist[res.v()][c]);
+			} else {
+				assertEquals(2, res.centers().length);
+				int c1 = res.centers()[0];
+				int c2 = res.centers()[1];
+				assertTrue(c1 < c2);
+				int d1u = dist[res.u()][c1];
+				int d1v = dist[res.v()][c1];
+				int d2u = dist[res.u()][c2];
+				int d2v = dist[res.v()][c2];
+				assertTrue(
+					(d1u == res.length() / 2 && d1v == (res.length() + 1) / 2 && d2u == (res.length() + 1) / 2 && d2v == res.length() / 2) ||
+					(d1u == (res.length() + 1) / 2 && d1v == res.length() / 2 && d2u == res.length() / 2 && d2v == (res.length() + 1) / 2)
+				);
+				assertEquals(1, dist[c1][c2]);
+			}
+		}
 	}
 
 	private int countSubtreeDfs(Tree t, int curr, int parent, boolean[] visited) {

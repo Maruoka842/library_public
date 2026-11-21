@@ -1,3 +1,4 @@
+template<class T> struct JOptional;
 template<class T> struct JStream {
     vector<T> values;
     explicit JStream(const vector<T>& source) : values(source) {}
@@ -17,12 +18,16 @@ template<class T> struct JStream {
         }
         return JStream(res);
     }
+    // 未テスト
+    // 計算量: O(N log N)
     JStream& distinct() {
-        sort(values.begin(), values.end());
-        values.erase(unique(values.begin(), values.end()), values.end());
+        stable_sort(values.begin(), values.end(), jless_fn);
+        values.erase(unique(values.begin(), values.end(), [](const T& a, const T& b) { return jequals(a, b); }), values.end());
         return *this;
     }
-    JStream& sorted() { sort(values.begin(), values.end()); return *this; }
+    // 未テスト
+    // 計算量: O(N log N)
+    JStream& sorted() { stable_sort(values.begin(), values.end(), jless_fn); return *this; }
     template<class F> JStream& filter(F predicate) {
         values.erase(remove_if(values.begin(), values.end(), [&](const T& x) { return !predicate(x); }), values.end());
         return *this;
@@ -46,31 +51,31 @@ template<class T> struct JStream {
         for (const auto& x : values) res += x;
         return res;
     }
-    JOptional<T> max() const {
+    auto max() const {
         if (values.empty()) return JOptional<T>{false, T{}};
         T res = values[0];
         for (const auto& x : values) if (x > res) res = x;
         return JOptional<T>{true, res};
     }
-    template<class Comp> JOptional<T> max(Comp comp) const {
+    template<class Comp> auto max(Comp comp) const {
         if (values.empty()) return JOptional<T>{false, T{}};
         T res = values[0];
         for (const auto& x : values) if (comp(res, x) < 0) res = x;
         return JOptional<T>{true, res};
     }
-    JOptional<T> min() const {
+    auto min() const {
         if (values.empty()) return JOptional<T>{false, T{}};
         T res = values[0];
         for (const auto& x : values) if (x < res) res = x;
         return JOptional<T>{true, res};
     }
-    template<class Comp> JOptional<T> min(Comp comp) const {
+    template<class Comp> auto min(Comp comp) const {
         if (values.empty()) return JOptional<T>{false, T{}};
         T res = values[0];
         for (const auto& x : values) if (comp(res, x) > 0) res = x;
         return JOptional<T>{true, res};
     }
-    template<class F> JOptional<T> reduce(F accumulator) const {
+    template<class F> auto reduce(F accumulator) const {
         if (values.empty()) return JOptional<T>{false, T{}};
         T res = values[0];
         for (size_t i = 1; i < values.size(); ++i) res = accumulator(res, values[i]);
@@ -105,6 +110,11 @@ template<class T> struct JStream {
         auto res = g((int)values.size());
         for (size_t i = 0; i < values.size(); ++i) res[i] = values[i];
         return res;
+    }
+    // 未テスト
+    // 計算量: O(N)
+    auto toList() const {
+        return JList<T>(values.begin(), values.end());
     }
 };
 using JIntStream = JStream<int>;

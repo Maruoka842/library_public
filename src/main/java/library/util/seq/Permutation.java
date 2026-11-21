@@ -8,12 +8,49 @@ import library.util.ArrayUtils;
 import library.util.Fp;
 import library.util.MathUtils;
 import library.util.Zn;
+import library.util.collections.IntTreapSet;
 import library.util.polynomial.PolynomialFp;
 import library.util.polynomial.PolynomialFpDynamic;
 import library.util.segtree.SegTree;
 import library.util.segtree.SegTreeFactory;
 
 public class Permutation {
+	
+	public static int lexRankAsInt(int[] a) {
+		int ret = 0;
+		int n = a.length;
+		var seg = SegTreeFactory.sum(n);
+		seg.fill(0);
+		int fac=1;
+		int cnt=1;
+		for (int i = a.length - 1; i >= 0; i--) {
+			ret += fac * seg.fold(0, a[i]);
+			seg.add(a[i], 1);
+			fac *= cnt++;
+		}
+		return ret;
+	}
+	
+	public static int[] fromLexRank(int n, int lexRank) {
+		
+		IntTreapSet set=new IntTreapSet();
+		for (int i = 0; i < n; i++) {
+			set.add(i);
+		}
+		var seg=SegTreeFactory.sum(n);
+		seg.fill(1);
+		int fac=(int)MathUtils.factorial(n-1);
+		int[]ret=new int[n];
+		for (int i = 0; i < n; i++) {
+			int t=lexRank/fac;
+			ret[i]=seg.maximalRight(0, v -> v <= t);
+			set.remove(ret[i]);
+			lexRank%=fac;
+			if(n-1-i!=0)fac/=(n-1-i);
+			seg.add(ret[i], -1);
+		}
+		return ret;
+	}
 	
 	/**
 	 * <p>{@code a} は {@code 0, 1, ..., a.length - 1} 上の置換を表す配列であり、
@@ -614,6 +651,54 @@ public class Permutation {
 		}
 
 		return dp[0][n];
+	}
+	
+	
+	/**
+	 * ほかの要素の相対的 rank を保ったまま、位置 pos にある rank を newRank に移動。
+	 * O(n)
+	 */
+	public static int[] moveRank(int[] v, int pos, int newRank) {
+	    int n = v.length;
+	    int[] nv = v.clone();
+	    int vi = v[pos];
+	    for (int k = 0; k < n; k++) {
+	        if (nv[k] > vi) {
+	            nv[k]--;
+	        }
+	    }
+	    for (int k = 0; k < n; k++) {
+	        if (nv[k] >= newRank) {
+	            nv[k]++;
+	        }
+	    }
+	    nv[pos] = newRank;
+	    return nv;
+	}
+	
+	/**
+	 * [pos, newRank] を返す
+	 * @param v
+	 * @param nv
+	 * @return
+	 */
+	public static int[] restoreMoveRank(int[] v, int[] nv) {
+	    int incrementPos = -1;
+	    int decrementPos = -1;
+	    int countIncrement = 0;
+	    int countDecrement = 0;
+	    for (int k = 0; k < v.length; k++) {
+	        if (v[k] < nv[k]) {
+	        	incrementPos = k; countIncrement++;
+	        }
+	        if (v[k] > nv[k]) {
+	        	decrementPos = k; countDecrement++;
+	        }
+	    }
+	    if (countIncrement == 0 && countDecrement == 0) return v.length == 0 ? null : new int[] {0, v[0]};
+	    if (countIncrement == 1) return new int[] {incrementPos, nv[incrementPos]};
+	    if (countDecrement == 1) return new int[] {decrementPos, nv[decrementPos]};
+	    return null;
 	}
 	
 	static void tr(Object...objects) {System.out.println(Arrays.deepToString(objects));}

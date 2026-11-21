@@ -74,6 +74,9 @@ public class FastScanner {
         return minus ? -n : n;
     }
     
+    /**
+     * 	符号なし10進整数 0 ～ 2⁶⁴−1 を受け取る
+     */
     public long nextUnsignedLong() {
     	return Long.parseUnsignedLong(next());
     }
@@ -147,8 +150,7 @@ public class FastScanner {
     	return a;
     }
     
-    public char[][] nextChars(int H, int W) {
-    	if (W == 0) return new char[H][0];
+    public char[][] nextChars2D(int H) {
     	char[][] a=new char[H][];
     	for (int i = 0; i < H; i++) {
 			a[i]=next().toCharArray();

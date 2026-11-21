@@ -39,18 +39,47 @@ template<class K, class V> struct JMap : map<K, V, function<bool(const K&, const
         if constexpr (is_same_v<R, bool>) return comp(a, b);
         else return comp(a, b) < 0;
     }) {}
-    template<class K2, class V2> V put(const K2& k, const V2& v) { K key = static_cast<K>(k); V val = static_cast<V>(v); V old{}; auto it = this->find(key); if (it != this->end()) old = it->second; (*this)[key] = val; return old; }
-    template<class K2> V get(const K2& k) const { auto it = this->find(static_cast<K>(k)); return it == this->end() ? V{} : it->second; }
-    template<class K2> V remove(const K2& k) { K key = static_cast<K>(k); V old{}; auto it = this->find(key); if (it != this->end()) { old = it->second; this->erase(it); } return old; }
-    template<class K2> std::pair<K, V> floorEntry(const K2& k) const {
-        auto it = this->upper_bound(static_cast<K>(k));
-        if (it == this->begin()) return std::pair<K, V>{};
-        return *std::prev(it);
+    template<class K2, class V2> auto put(const K2& k, const V2& v) {
+        K key = static_cast<K>(k);
+        V val = static_cast<V>(v);
+        auto it = this->find(key);
+        if constexpr (is_arithmetic_v<V>) {
+            JOptionalVal<V> old = nullptr;
+            if (it != this->end()) old = it->second;
+            (*this)[key] = val;
+            return old;
+        } else {
+            V old{};
+            if (it != this->end()) old = it->second;
+            (*this)[key] = val;
+            return old;
+        }
     }
-    template<class K2> std::pair<K, V> ceilingEntry(const K2& k) const {
+    template<class K2> V& get(const K2& k) {
+        auto it = this->find(static_cast<K>(k));
+        if (it == this->end()) {
+            return (*this)[static_cast<K>(k)] = V{};
+        }
+        return it->second;
+    }
+    template<class K2> const V& get(const K2& k) const {
+        auto it = this->find(static_cast<K>(k));
+        if (it == this->end()) {
+            static const V default_val{};
+            return default_val;
+        }
+        return it->second;
+    }
+    template<class K2> V remove(const K2& k) { K key = static_cast<K>(k); V old{}; auto it = this->find(key); if (it != this->end()) { old = it->second; this->erase(it); } return old; }
+    template<class K2> JEntry<K, V> floorEntry(const K2& k) const {
+        auto it = this->upper_bound(static_cast<K>(k));
+        if (it == this->begin()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*std::prev(it));
+    }
+    template<class K2> JEntry<K, V> ceilingEntry(const K2& k) const {
         auto it = this->lower_bound(static_cast<K>(k));
-        if (it == this->end()) return std::pair<K, V>{};
-        return *it;
+        if (it == this->end()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*it);
     }
     template<class K2> K floorKey(const K2& k) const {
         auto it = this->upper_bound(static_cast<K>(k));
@@ -64,17 +93,17 @@ template<class K, class V> struct JMap : map<K, V, function<bool(const K&, const
     }
     // 未テスト
     // 計算量: O(log N)
-    template<class K2> std::pair<K, V> lowerEntry(const K2& k) const {
+    template<class K2> JEntry<K, V> lowerEntry(const K2& k) const {
         auto it = this->lower_bound(static_cast<K>(k));
-        if (it == this->begin()) return std::pair<K, V>{};
-        return *std::prev(it);
+        if (it == this->begin()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*std::prev(it));
     }
     // 未テスト
     // 計算量: O(log N)
-    template<class K2> std::pair<K, V> higherEntry(const K2& k) const {
+    template<class K2> JEntry<K, V> higherEntry(const K2& k) const {
         auto it = this->upper_bound(static_cast<K>(k));
-        if (it == this->end()) return std::pair<K, V>{};
-        return *it;
+        if (it == this->end()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*it);
     }
     // 未テスト
     // 計算量: O(log N)
@@ -173,8 +202,8 @@ template<class K, class V> struct JMap : map<K, V, function<bool(const K&, const
         (*this)[k] = v;
         return v;
     }
-    JSet<std::pair<K, V>> entrySet() const {
-        JSet<std::pair<K, V>> result;
+    JSet<JEntry<K, V>> entrySet() const {
+        JSet<JEntry<K, V>> result;
         for (const auto& entry : *this) result.add(entry);
         return result;
     }
@@ -192,30 +221,43 @@ template<class K, class V> struct JMap : map<K, V, function<bool(const K&, const
     bool isEmpty() const { return this->empty(); }
     K firstKey() const { return this->begin()->first; }
     K lastKey() const { return this->rbegin()->first; }
-    std::pair<K, V> pollFirstEntry() {
-        if (this->empty()) return {};
+    JEntry<K, V> pollFirstEntry() {
+        if (this->empty()) return nullptr;
         auto it = this->begin();
-        std::pair<K, V> res = *it;
+        auto res = std::make_shared<std::pair<K, V>>(*it);
         this->erase(it);
         return res;
     }
-    std::pair<K, V> pollLastEntry() {
-        if (this->empty()) return {};
+    JEntry<K, V> pollLastEntry() {
+        if (this->empty()) return nullptr;
         auto it = prev(this->end());
-        std::pair<K, V> res = *it;
+        auto res = std::make_shared<std::pair<K, V>>(*it);
         this->erase(it);
         return res;
     }
-    std::pair<K, V> firstEntry() const {
-        if (this->empty()) return {};
-        return *this->begin();
+    JEntry<K, V> firstEntry() const {
+        if (this->empty()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*this->begin());
     }
-    std::pair<K, V> lastEntry() const {
-        if (this->empty()) return {};
-        return *prev(this->end());
+    JEntry<K, V> lastEntry() const {
+        if (this->empty()) return nullptr;
+        return std::make_shared<std::pair<K, V>>(*prev(this->end()));
     }
     JStream<std::pair<K, V>> stream() const {
         vector<std::pair<K, V>> v(this->begin(), this->end());
         return JStream<std::pair<K, V>>(v);
+    }
+    // 未テスト
+    // 計算量: O(N)
+    bool equals(const JObject& o) const {
+        if (auto p = std::any_cast<JMap<K, V>>(&o)) return *this == *p;
+        return false;
+    }
+    // 未テスト
+    // 計算量: O(N)
+    int hashCode() const {
+        int h = 0;
+        for (const auto& [k, v] : *this) h += static_cast<int>(jhash(k) ^ jhash(v));
+        return h;
     }
 };

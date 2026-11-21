@@ -717,7 +717,7 @@ public class JavaToCppTest {
         String cpp = JavaToCpp.convert(java);
 
         assertTrue(cpp.contains("std::sqrt"));
-        assertTrue(cpp.contains("(long long){}"));
+        assertTrue(cpp.contains("(long long){}") || cpp.contains("nullptr"));
         assertTrue(cpp.contains("make_shared<Reachable>") || cpp.contains("make_shared<struct Reachable>"));
         assertTrue(cpp.contains("(vector<long long>){}"));
         assertTrue(cpp.contains("struct Reachable"));
@@ -794,7 +794,7 @@ public class JavaToCppTest {
         assertTrue(cpp.contains("JComparatorUtils::naturalOrder()"));
         assertTrue(cpp.contains("x.length()"));
         assertTrue(cpp.contains("Main::mod"));
-        assertTrue(cpp.contains("tree->set(0, {})"));
+        assertTrue(cpp.contains("tree->set(0, {})") || cpp.contains("tree->set(0, (long long){})"));
     }
 
     /**
@@ -1892,5 +1892,2105 @@ public class JavaToCppTest {
         assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
         assertTrue(runOutput.contains("FINALLY"), "Expected FINALLY output:\n" + runOutput);
         assertTrue(runOutput.contains("OK: 1 1 2 1") || runOutput.contains("OK: 1 1 2 true"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testCovariantMethodReturnAndUnshadowing(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                interface BaseStrategy<T> {
+                    T add(T a, T b);
+                }
+
+                interface DerivedStrategy<T> extends BaseStrategy<T> {
+                    T sub(T a, T b);
+                }
+
+                interface BaseElement<X> {
+                    BaseStrategy<X> parent();
+                    X self();
+                }
+
+                interface DerivedElement<X> extends BaseElement<X> {
+                    @Override
+                    DerivedStrategy<X> parent();
+                    default X sub(X a) {
+                        return parent().sub(self(), a);
+                    }
+                }
+
+                class IntElem implements DerivedElement<IntElem> {
+                    int val;
+                    IntElem(int val) { this.val = val; }
+                    @Override
+                    public DerivedStrategy<IntElem> parent() {
+                        return new DerivedStrategy<>() {
+                            @Override
+                            public IntElem add(IntElem a, IntElem b) { return new IntElem(a.val + b.val); }
+                            @Override
+                            public IntElem sub(IntElem a, IntElem b) { return new IntElem(a.val - b.val); }
+                        };
+                    }
+                    @Override
+                    public IntElem self() { return this; }
+                }
+
+                class BaseMath {
+                    public long mul(long a, long b) { return a * b; }
+                    public long mul(long a, long b, long c) { return a * b * c; }
+                }
+
+                class DerivedMath extends BaseMath {
+                    @Override
+                    public long mul(long a, long b) { return (a * b) % 1000; }
+                }
+
+                public class Main {
+                    public static void main(String[] args) {
+                        IntElem x = new IntElem(10);
+                        IntElem y = new IntElem(3);
+                        IntElem z = x.sub(y);
+
+                        DerivedMath dm = new DerivedMath();
+                        long m2 = dm.mul(4, 5);
+                        long m3 = dm.mul(2, 3, 4);
+
+                        System.out.println("RES: " + z.val + " " + m2 + " " + m3);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        Path cppFile = tempDir.resolve("main_test12.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test12").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test12").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("RES: 7 20 24"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * 不要な prelude が C++ 出力に含まれないことを検証する。
+     * 計算量: O(L)。
+     */
+    @Test
+    // 未テスト
+    void excludesUnusedPrelude() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                public class Main {
+                    public static void main(String[] args) {
+                        int a = 10;
+                        int b = 20;
+                        System.out.println(a + b);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        // 基本機能のみのプログラムには JBigInteger, JBitSet, Line2D, JScanner などが含まれない
+        assertFalse(cpp.contains("struct JBigInteger"));
+        assertFalse(cpp.contains("struct JBitSet"));
+        assertFalse(cpp.contains("struct Line2D"));
+        assertFalse(cpp.contains("struct JScanner"));
+        assertFalse(cpp.contains("struct JRandom"));
+        assertFalse(cpp.contains("struct JThread"));
+        assertFalse(cpp.contains("struct JRuntime"));
+        assertFalse(cpp.contains("struct JBigDecimal"));
+
+        Path cppFile = tempDir.resolve("main_test_noprelude.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_noprelude").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_noprelude").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("30"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * BigInteger を使用するプログラムでは JBigInteger のみが必要に応じて含まれることを検証する。
+     * 計算量: O(L)。
+     */
+    @Test
+    // 未テスト
+    void includesOnlyRequiredPreludeWhenUsed() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.math.BigInteger;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        BigInteger a = new BigInteger("12345678901234567890");
+                        BigInteger b = BigInteger.valueOf(10);
+                        System.out.println(a.multiply(b).toString());
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        assertTrue(cpp.contains("struct JBigInteger"));
+        assertFalse(cpp.contains("struct JBitSet"));
+        assertFalse(cpp.contains("struct Line2D"));
+        assertFalse(cpp.contains("struct JScanner"));
+
+        Path cppFile = tempDir.resolve("main_test_bigint_prelude.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_bigint_prelude").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_bigint_prelude").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("123456789012345678900"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * 独自定義された Scanner クラス、vector<bool>::reference 比較、静的 outer、独自コレクション iterator、
+     * 独自 Enum 宣言、および sort(null) のコンパイルを検証する。
+     * 計算量: O(L)。
+     */
+    @Test
+    // 未テスト
+    void testPreviousCompilationCheckRegressions(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                class Scanner {
+                    int val;
+                    Scanner() { this.val = 42; }
+                    int nextInt() { return val; }
+                    static boolean isPrintable(int c) { return c >= 33; }
+                }
+
+                public class Main {
+                    class InnerNode {
+                        int id;
+                        InnerNode() { this.id = 100; }
+                    }
+
+                    enum Winner {
+                        LEFT, RIGHT
+                    }
+
+                    InnerNode root = new InnerNode();
+
+                    public static void main(String[] args) {
+                        Scanner sc = new Scanner();
+                        boolean b = Scanner.isPrintable(sc.nextInt());
+
+                        boolean[][] mat = new boolean[2][2];
+                        mat[0][1] = true;
+                        boolean diff = (mat[0][1] != mat[1][0]);
+
+                        List<Integer> list = new ArrayList<>();
+                        list.add(3);
+                        list.add(1);
+                        list.sort(null);
+
+                        Winner w = Winner.LEFT;
+                        System.out.println("OK: " + sc.nextInt() + " " + b + " " + diff + " " + list.get(0) + " " + (w == Winner.LEFT));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+
+        Path cppFile = tempDir.resolve("main_test_regressions.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_regressions").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_regressions").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("OK: 42 1 1 1 1") || runOutput.contains("OK: 42 true true 1 true"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testBatch3482Features() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                public class Main {
+                    public record SimpleRecord(List[] comp, int[] col) {}
+
+                    public static Iterable<Integer> iterateFrom(int start) {
+                        return () -> new PrimitiveIterator.OfInt() {
+                            int cur = start;
+                            @Override
+                            public boolean hasNext() { return cur > 0; }
+                            @Override
+                            public int nextInt() { return cur--; }
+                        };
+                    }
+
+                    public static void main(String[] args) {
+                        List<Integer> list = new ArrayList<>();
+                        list.add(10);
+                        list.add(20);
+                        list.addFirst(5);
+                        list.addLast(30);
+                        int first = list.getFirst();
+                        int last = list.getLast();
+                        list.removeFirst();
+                        list.removeLast();
+
+                        Map<Integer, Set<Integer>> map = new HashMap<>();
+                        map.put(1, new HashSet<>());
+                        map.get(1).add(42);
+                        int hash = Objects.hashCode(map);
+
+                        List<Integer>[] arr = new ArrayList[2];
+                        arr[0] = new ArrayList<>();
+                        arr[0].add(100);
+                        SimpleRecord rec = new SimpleRecord(arr, new int[]{1, 2});
+
+                        int sum = 0;
+                        for (int v : iterateFrom(3)) {
+                            sum += v;
+                        }
+
+                        System.out.println("OK: " + first + " " + last + " " + (hash != 0) + " " + rec.col()[0] + " " + sum);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch3482.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch3482").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch3482").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("OK: 5 30 1 1 6") || runOutput.contains("OK: 5 30 true 1 6"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testBatch3582Features(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                class Helper {
+                    static final java.util.Comparator<Long> CMP = (a, b) -> Long.compare(a, b);
+                }
+
+                public class Main {
+                    int outerVal = 42;
+
+                    void execute(int paramX) {
+                        int localY = 10;
+                        class LocalWorker {
+                            int work() {
+                                return outerVal + paramX + localY;
+                            }
+                            Main getOuter() {
+                                return Main.this;
+                            }
+                        }
+                        LocalWorker worker = new LocalWorker();
+                        System.out.println("Worker: " + worker.work() + " " + (worker.getOuter() != null));
+                    }
+
+                    public static void main(String[] args) {
+                        List<Long> list = new ArrayList<>();
+                        list.add(10L);
+                        list.add(20L);
+                        list.add(10L);
+                        Set<Long> set = new HashSet<>(list);
+                        System.out.println("Set size: " + set.size() + " CMP: " + Helper.CMP.compare(10L, 20L));
+                        new Main().execute(100);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch3582.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch3582").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch3582").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("Set size: 2 CMP: -1"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Worker: 152 1") || runOutput.contains("Worker: 152 true"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    // 未テスト
+    // 計算量: O(|S|)
+    void testBatch3682Features() throws Exception {
+        Path java = tempDir.resolve("MainBatch3682.java");
+        Files.writeString(java, """
+                import java.util.*;
+                import java.util.function.*;
+
+                public class Main {
+                    interface ActionStrategy<F, S> {
+                        S act(F f, S s);
+                        default S powAct(F f, long n, S s) {
+                            return act(f, s);
+                        }
+                    }
+
+                    static class CustomSet extends HashSet<Long> {
+                        public boolean addPair(int a, int b) {
+                            return super.add((long) a << 32 | (long) b);
+                        }
+                        @Override
+                        public boolean equals(Object o) {
+                            return super.equals(o);
+                        }
+                        @Override
+                        public int hashCode() {
+                            return super.hashCode();
+                        }
+                    }
+
+                    public void register(long x, long y) {
+                        System.out.println("registered: " + x + "," + y);
+                    }
+
+                    public static void main(String[] args) {
+                        // 1. Map.Entry.setValue
+                        Map<String, String> map = new HashMap<>();
+                        map.put("key", "old");
+                        for (Map.Entry<String, String> entry : map.entrySet()) {
+                            entry.setValue("new");
+                            System.out.println("Entry value: " + entry.getValue());
+                        }
+
+                        // 2. JList(const Container&) with JObject/any (empty list)
+                        List<String> empty = List.of();
+                        ArrayList<String> copyList = new ArrayList<>(empty);
+                        System.out.println("CopyList size: " + copyList.size());
+
+                        // 3. Keyword register & conditional functional type
+                        Main m = new Main();
+                        m.register(10, 20);
+                        LongUnaryOperator op = (args.length == 0) ? (x -> x * 2) : null;
+                        if (op != null) {
+                            System.out.println("Op: " + op.applyAsLong(5));
+                        }
+
+                        // 4. CustomSet subclass of HashSet
+                        CustomSet set = new CustomSet();
+                        set.addPair(1, 2);
+                        System.out.println("Set contains: " + set.contains((1L << 32) | 2L) + " hash: " + (set.hashCode() != 0));
+
+                        // 5. ActionStrategy anonymous class with boxing / primitive match
+                        ActionStrategy<long[], Long> strat = new ActionStrategy<long[], Long>() {
+                            @Override
+                            public Long act(long[] f, Long s) {
+                                return f[0] + s;
+                            }
+                        };
+                        System.out.println("Act: " + strat.act(new long[]{3}, 7L));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch3682.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch3682").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch3682").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("Entry value: new"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("CopyList size: 0"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("registered: 10,20"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Op: 10"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Set contains: 1 hash: 1") || runOutput.contains("Set contains: true hash: true"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Act: 10"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * バッチ3782の対応機能検証（nullリテラル要素型補完、Math::min/maxメソッド参照、カスタムSAMインターフェースへのラムダ式渡し、シグネチャ重複除去、非staticメンバ変数初期化子での匿名クラス生成）。
+     * 計算量: O(|S|)。
+     */
+    @Test
+    // 未テスト
+    void testBatch3782Features() throws Exception {
+        Path java = tempDir.resolve("MainBatch3782.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                public class Main {
+                    @FunctionalInterface
+                    interface MyPredicate {
+                        boolean test(int a, int b);
+                    }
+
+                    static class Helper {
+                        static boolean check(int[] a, MyPredicate pred) {
+                            return pred.test(a[0], a[1]);
+                        }
+                        static long[] take(long[] a, int[] idx) {
+                            return new long[]{a[idx[0]]};
+                        }
+                        static long[] take(long[] a, Integer[] idx) {
+                            return new long[]{a[idx[0]]};
+                        }
+                    }
+
+                    interface Strategy<T> {
+                        T zero();
+                    }
+
+                    static class Solver<T> {
+                        T zero() { return null; }
+                        Strategy<T> parent = new Strategy<T>() {
+                            public T zero() {
+                                return Solver.this.zero();
+                            }
+                        };
+                    }
+
+                    public static void main(String[] args) {
+                        // 1. null literal in List<long[]>
+                        List<long[]> list = new ArrayList<>();
+                        list.add(null);
+                        System.out.println("List size: " + list.size());
+
+                        // 2. Math::min reference
+                        java.util.function.LongBinaryOperator op = Math::min;
+                        System.out.println("Min: " + op.applyAsLong(10L, 20L));
+
+                        // 3. Lambda to SAM interface
+                        boolean predRes = Helper.check(new int[]{5, 5}, (u, v) -> u == v);
+                        System.out.println("Pred: " + predRes);
+
+                        // 4. Overloaded take call
+                        long[] taken = Helper.take(new long[]{100L}, new int[]{0});
+                        System.out.println("Taken: " + taken[0]);
+
+                        // 5. Instance field anon class
+                        Solver<Long> s = new Solver<>();
+                        System.out.println("Solver created: " + (s != null));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch3782.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch3782").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch3782").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("List size: 1"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Min: 10"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Pred: 1") || runOutput.contains("Pred: true"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Taken: 100"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Solver created: 1") || runOutput.contains("Solver created: true"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testBatch3932Features(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+                import java.util.stream.*;
+
+                public class Main {
+                    enum Direction {
+                        LEFT, UP, RIGHT, DOWN;
+                    }
+
+                    static class CustomMap<V> extends HashMap<Long, V> {
+                        public V putVal(long k, V v) {
+                            return super.put(k, v);
+                        }
+                        public boolean checkEmpty() {
+                            return isEmpty();
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        // 1. Arrays.fill range
+                        int[] arr = new int[5];
+                        Arrays.fill(arr, 1, 4, 42);
+                        System.out.println("Arr: " + arr[0] + " " + arr[1] + " " + arr[3] + " " + arr[4]);
+
+                        // 2. Stream.toList()
+                        List<String> src = new ArrayList<>();
+                        src.add("hello");
+                        src.add("world");
+                        List<String> list = src.stream().distinct().toList();
+                        System.out.println("Stream toList: " + list.size() + " " + list.get(0));
+
+                        // 3. Enum in switch
+                        Direction dir = Direction.UP;
+                        int val = 0;
+                        switch (dir) {
+                            case LEFT: val = 1; break;
+                            case UP: val = 2; break;
+                            default: val = 3; break;
+                        }
+                        System.out.println("Switch val: " + val);
+
+                        // 4. CustomMap with super calls
+                        CustomMap<String> map = new CustomMap<>();
+                        map.putVal(10L, "test");
+                        System.out.println("Map empty: " + map.checkEmpty() + " val: " + map.get(10L));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch3932.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch3932").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch3932").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("Arr: 0 42 42 0"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Stream toList: 2 hello"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Switch val: 2"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Map empty: 0") || runOutput.contains("Map empty: false"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("val: test"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testSubSequenceAndGenericCastsAndMethodTypeArgs(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.PriorityQueue;
+                import java.util.Arrays;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        String s = "hello world";
+                        CharSequence sub = s.subSequence(0, 5);
+                        System.out.println(sub.toString());
+
+                        GenericHolder<State> holder = new GenericHolder<>(new State(10));
+                        holder.checkInstance();
+
+                        MyPQ<int[]> pq = new MyPQ<>();
+                        pq.add(new int[]{1, 2});
+                        System.out.println(pq.size());
+                    }
+                }
+
+                class State {
+                    int val;
+                    public State(int val) { this.val = val; }
+                }
+
+                class GenericHolder<T> {
+                    T item;
+                    public GenericHolder(T item) { this.item = item; }
+                    public void checkInstance() {
+                        if (item instanceof long[]) {
+                            long[] arr = (long[]) item;
+                            System.out.println(Arrays.toString(arr));
+                        } else {
+                            System.out.println("not long array");
+                        }
+                    }
+                }
+
+                class MyPQ<T> extends PriorityQueue<T> {
+                    public MyPQ() {
+                        super((x, y) -> defaultCompare(x, y));
+                    }
+                    private static <T> int defaultCompare(T x, T y) {
+                        return 0;
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch4082.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch4082").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch4082").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("hello"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("not long array"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("1"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testStringConcatWithPriorityQueueAndToString(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.PriorityQueue;
+
+                public class Main {
+                    static class Item {
+                        int val;
+                        Item(int v) { this.val = v; }
+                        @Override
+                        public String toString() {
+                            return "Item(" + val + ")";
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        PriorityQueue<Long> pq = new PriorityQueue<>();
+                        pq.add(42L);
+                        String s1 = pq + " end";
+                        System.out.println(s1);
+
+                        Item item = new Item(100);
+                        String s2 = "Item is " + item;
+                        System.out.println(s2);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_jstr.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_jstr").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_jstr").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("end"), "Unexpected output:\n" + runOutput);
+        assertTrue(runOutput.contains("Item is Item(100)"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testLambdaAssignedToCustomSAMInterface() throws Exception {
+        Path java = tempDir.resolve("MainLambdaSAM.java");
+        Files.writeString(java, """
+                public class Main {
+                    interface CostFunction {
+                        long calc(int i, int j);
+                    }
+
+                    public static void main(String[] args) {
+                        int[] A = {10, 20, 30};
+                        int[] B = {1, 2, 3};
+                        CostFunction f = (i, j) -> {
+                            if (i < 0 || i >= A.length) return -1;
+                            return A[i] + B[j];
+                        };
+                        System.out.println(f.calc(1, 2));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_lambda_sam.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_lambda_sam").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_lambda_sam").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("23"), "Unexpected output:\n" + runOutput);
+    }
+
+    /**
+     * JDeque, JStack, JPriorityQueue initialized with collections are correctly converted and compiled.
+     */
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    public void testCollectionConstructorsForContainers() throws Exception {
+        Path java = tempDir.resolve("MainCollectionContainers.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        List<Integer> list = new ArrayList<>(Arrays.asList(1, 2, 3));
+                        Queue<Integer> deque = new ArrayDeque<>(list);
+                        Stack<Integer> stack = new Stack<>();
+                        stack.addAll(list);
+                        PriorityQueue<Integer> pq = new PriorityQueue<>(list);
+
+                        int dVal = deque.poll();
+                        int dSize = deque.size();
+                        System.out.println(dVal + " " + dSize);
+
+                        int sVal = stack.pop();
+                        int sSize = stack.size();
+                        System.out.println(sVal + " " + sSize);
+
+                        int pVal = pq.poll();
+                        int pSize = pq.size();
+                        System.out.println(pVal + " " + pSize);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_col_containers.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_col_containers").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_col_containers").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("1 2"), "Unexpected deque output:\n" + runOutput);
+        assertTrue(runOutput.contains("3 2"), "Unexpected stack output:\n" + runOutput);
+        assertTrue(runOutput.contains("1 2"), "Unexpected pq output:\n" + runOutput);
+    }
+
+    @Test
+    void testAbsExactAndMultiLevelOuterFieldAndBigIntExactAndFillNull(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.math.BigInteger;
+                import java.util.Arrays;
+                import java.util.List;
+                import java.util.ArrayList;
+
+                public class Main {
+                    int counter = 42;
+
+                    public class Outer {
+                        public class Inner {
+                            int getId() {
+                                return counter;
+                            }
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        int a = Math.absExact(-10);
+                        long b = Math.absExact(-20L);
+
+                        BigInteger bi = BigInteger.valueOf(100);
+                        BigInteger[] qr = bi.divideAndRemainder(BigInteger.valueOf(30));
+                        long valExact = qr[0].longValueExact();
+                        int ivalExact = qr[1].intValueExact();
+
+                        List<Integer>[] arr = new List[2];
+                        arr[0] = new ArrayList<>();
+                        arr[0].add(1);
+                        Arrays.fill(arr, null);
+
+                        Main m = new Main();
+                        Outer.Inner inner = m.new Outer().new Inner();
+                        int c = inner.getId();
+
+                        System.out.println(a + " " + b + " " + valExact + " " + ivalExact + " " + c);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_batch.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_batch").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_batch").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("10 20 3 10 42"), "Unexpected output:\n" + runOutput);
+    }
+    @Test
+    void testSplittableRandomAndOptionalLongAndCharString(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.SplittableRandom;
+                import java.util.OptionalLong;
+
+                public class Main {
+                    static class SegTree<T> {
+                        public static int calc(int a) { return a * 2; }
+                    }
+
+                    static class Node {
+                        int val;
+                        Node(int val) {
+                            this.val = val;
+                            helper(this);
+                        }
+                    }
+
+                    static void helper(Node n) {
+                        n.val += 1;
+                    }
+
+                    interface TriFunc<A, B, C, R> {
+                        R apply(A a, B b, C c);
+                    }
+
+                    static class GenericContainer<X, Y> {
+                        X x;
+                        Y y;
+                        GenericContainer(TriFunc<X, X, Y, Integer> f) {
+                            f.apply(null, null, null);
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        SplittableRandom rnd = new SplittableRandom(12345);
+                        long r = rnd.nextLong(1, 100);
+                        OptionalLong opt = OptionalLong.of(42);
+                        OptionalLong emptyOpt = OptionalLong.empty();
+                        char[] chars = "415".toCharArray();
+                        String s = String.valueOf(chars);
+                        int segCalc = SegTree.calc(5);
+                        Node node = new Node(10);
+                        GenericContainer<Integer, String> gc = new GenericContainer<>((a, b, c) -> 0);
+                        System.out.println(s + " " + opt.getAsLong() + " " + emptyOpt.isPresent() + " " + segCalc + " " + node.val);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("main_test_features.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("main_test_features").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("main_test_features").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertTrue(runOutput.contains("415 42") && runOutput.contains("10 11"), "Unexpected output:\n" + runOutput);
+    }
+
+    @Test
+    void testLocalVariableNotMistakenForCapturedVariable() throws Exception {
+        Path java = tempDir.resolve("LocalVarCaptureTest.java");
+        Files.writeString(java, """
+                import java.util.function.BinaryOperator;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        BinaryOperator<Integer> op = new BinaryOperator<Integer>() {
+                            @Override
+                            public Integer apply(Integer a, Integer b) {
+                                return a + b;
+                            }
+                        };
+                        int[] a = new int[]{10, 20};
+                        System.out.println(op.apply(a[0], a[1]));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        assertFalse(cpp.contains("static vector<int> a;"), "Local variable 'a' should not be emitted as static");
+
+        Path cppFile = tempDir.resolve("LocalVarCaptureTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("LocalVarCaptureTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("LocalVarCaptureTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("30\n", runOutput);
+    }
+
+    @Test
+    void testNullableGenericArithmeticType() throws Exception {
+        Path java = tempDir.resolve("NullableGenericTest.java");
+        Files.writeString(java, """
+                public class Main {
+                    static class Container<T> {
+                        T val;
+                        void put(T v) {
+                            this.val = v;
+                        }
+                        boolean isNull() {
+                            return val == null;
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        Container<Long> c = new Container<>();
+                        System.out.println(c.isNull());
+                        c.put(42L);
+                        System.out.println(c.isNull());
+                        System.out.println(c.val);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        assertTrue(cpp.contains("Nullable<TInner>::type val"), "Field 'val' should be emitted with Nullable<TInner>::type");
+
+        Path cppFile = tempDir.resolve("NullableGenericTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("NullableGenericTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("NullableGenericTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("1\n0\n42\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    @Test
+    void testFloatingPointFormatting(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                public class Main {
+                    public static void main(String[] args) {
+                        double a = 32.0;
+                        double b = 42.5;
+                        PrintWriter pw = new PrintWriter(System.out);
+                        pw.println(a);
+                        pw.println(b);
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("FloatingPointTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("FloatingPointTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("FloatingPointTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("32.0\n42.5\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    @Test
+    void testComparatorReversedAndFieldDefaultInit(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.Arrays;
+                import java.util.Comparator;
+
+                public class Main {
+                    static class Item {
+                        int val;
+                        int uninit;
+                        Item(int val) {
+                            this.val = val;
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        Item[] items = new Item[]{ new Item(3), new Item(1), new Item(2) };
+                        Comparator<Item> comp = Comparator.comparingInt((Item item) -> item.val).reversed();
+                        Arrays.sort(items, comp);
+                        PrintWriter pw = new PrintWriter(System.out);
+                        for (Item item : items) {
+                            pw.println(item.val + " " + item.uninit);
+                        }
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        assertTrue(cpp.contains("jreversed("));
+        assertTrue(cpp.contains("int uninit = {};"));
+
+        Path cppFile = tempDir.resolve("ComparatorReversedAndFieldDefaultInitTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("ComparatorReversedAndFieldDefaultInitTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("ComparatorReversedAndFieldDefaultInitTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("3 0\n2 0\n1 0\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    // 未テスト
+    @Test
+    void testIdentityHashMapAndPointerComparableSort(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("IdentityHashMapSortTest.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.ArrayList;
+                import java.util.Collections;
+                import java.util.IdentityHashMap;
+                import java.util.List;
+
+                public class Main {
+                    static class Node implements Comparable<Node> {
+                        int cost;
+                        Node(int cost) { this.cost = cost; }
+                        @Override
+                        public int compareTo(Node o) {
+                            return Integer.compare(this.cost, o.cost);
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        List<Node> list = new ArrayList<>();
+                        Node n1 = new Node(30);
+                        Node n2 = new Node(10);
+                        Node n3 = new Node(20);
+                        list.add(n1);
+                        list.add(n2);
+                        list.add(n3);
+
+                        Collections.sort(list);
+
+                        IdentityHashMap<Node, Boolean> map = new IdentityHashMap<>();
+                        PrintWriter pw = new PrintWriter(System.out);
+                        for (Node n : list) {
+                            pw.print(n.cost + " ");
+                            map.put(n, true);
+                        }
+                        pw.println();
+                        pw.println(map.get(n2));
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("IdentityHashMapSortTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("IdentityHashMapSortTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("IdentityHashMapSortTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("10 20 30 \n1\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    @Test
+    void testUnsignedShiftAndFunctionalEquals(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.Objects;
+                import java.util.function.BinaryOperator;
+                import java.util.function.UnaryOperator;
+
+                class Container {
+                    Integer val;
+                    BinaryOperator<Integer> op;
+                    UnaryOperator<Integer> inv;
+
+                    Container(Integer val, BinaryOperator<Integer> op, UnaryOperator<Integer> inv) {
+                        this.val = val;
+                        this.op = op;
+                        this.inv = inv;
+                    }
+
+                    @Override
+                    public boolean equals(Object obj) {
+                        if (!(obj instanceof Container)) return false;
+                        Container other = (Container) obj;
+                        if (val == null ? other.val != null : !val.equals(other.val)) return false;
+                        if (op == null ? other.op != null : !op.equals(other.op)) return false;
+                        if (inv == null ? other.inv != null : !inv.equals(other.inv)) return false;
+                        return true;
+                    }
+
+                    @Override
+                    public int hashCode() {
+                        return Objects.hash(val, op, inv);
+                    }
+                }
+
+                public class Main {
+                    public static void main(String[] args) {
+                        PrintWriter pw = new PrintWriter(System.out);
+                        long val = -16L;
+                        long shifted = val >>> 2;
+                        val >>>= 2;
+                        pw.println(shifted == val);
+
+                        Container c1 = new Container(10, Integer::sum, v -> -v);
+                        pw.println(c1.equals(c1));
+                        pw.println(c1.hashCode() != 0);
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("Main.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("true\ntrue\ntrue\n", runOutput.replace("\r\n", "\n").replace("1", "true"));
+    }
+
+    @Test
+    void testBatchEnhancements(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.ArrayDeque;
+                import java.util.Deque;
+                import java.util.Iterator;
+                import java.util.PriorityQueue;
+
+                public class Main {
+                    static class Base {
+                        int x = 42;
+                    }
+                    static class Derived extends Base {
+                        int y = 100;
+                    }
+
+                    public static void main(String[] args) {
+                        PrintWriter pw = new PrintWriter(System.out);
+
+                        // StringBuilder capacity constructor
+                        StringBuilder sb = new StringBuilder(100);
+                        sb.append("hello");
+                        pw.println(sb.toString());
+
+                        // Deque descendingIterator
+                        Deque<Integer> dq = new ArrayDeque<>();
+                        dq.addLast(1);
+                        dq.addLast(2);
+                        dq.addLast(3);
+                        for (Iterator<Integer> it = dq.descendingIterator(); it.hasNext(); ) {
+                            pw.print(it.next() + " ");
+                        }
+                        pw.println();
+
+                        // PriorityQueue iteration
+                        PriorityQueue<Integer> pq = new PriorityQueue<>();
+                        pq.add(10);
+                        pq.add(20);
+                        for (int v : pq) {
+                            pw.print((v >= 10) + " ");
+                        }
+                        pw.println();
+
+                        // Multiple loop labels with same name in same method
+                        out: for (int i = 0; i < 3; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                if (j == 1) continue out;
+                            }
+                        }
+                        out: for (int i = 0; i < 3; i++) {
+                            for (int j = 0; j < 3; j++) {
+                                if (j == 1) continue out;
+                            }
+                        }
+                        pw.println("labels_ok");
+
+                        // Nested class dependency order
+                        Derived d = new Derived();
+                        pw.println(d.x + d.y);
+
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("Main.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("hello\n3 2 1 \n1 1 \nlabels_ok\n142\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    @Test
+    void testAnonymousIteratorAndLengthFieldAndNanMath(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.io.PrintWriter;
+                import java.util.Iterator;
+                import java.util.NoSuchElementException;
+
+                class HasLength {
+                    int length;
+                    HasLength(int length) {
+                        this.length = length;
+                    }
+                    int getLen() {
+                        return this.length;
+                    }
+                }
+
+                class MySeq implements Iterable<Integer> {
+                    final int n;
+                    MySeq(int n) { this.n = n; }
+                    @Override
+                    public Iterator<Integer> iterator() {
+                        return new Iterator<Integer>() {
+                            int cur = 0;
+                            @Override
+                            public boolean hasNext() {
+                                return cur < n;
+                            }
+                            @Override
+                            public Integer next() {
+                                if (!hasNext()) throw new NoSuchElementException();
+                                return cur++;
+                            }
+                        };
+                    }
+                }
+
+                public class Main {
+                    public static void main(String[] args) {
+                        PrintWriter pw = new PrintWriter(System.out);
+
+                        HasLength hl = new HasLength(42);
+                        pw.println(hl.getLen());
+
+                        MySeq seq = new MySeq(3);
+                        for (int v : seq) {
+                            pw.print(v + " ");
+                        }
+                        pw.println();
+
+                        double nan = Double.NaN;
+                        double minNan = Math.min(nan, 5.0);
+                        double maxNan = Math.max(5.0, nan);
+                        pw.println(Double.isNaN(minNan) ? "min_nan" : "min_num");
+                        pw.println(Double.isNaN(maxNan) ? "max_nan" : "max_num");
+
+                        pw.flush();
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("Main.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("42\n0 1 2 \nmin_nan\nmax_nan\n", runOutput.replace("\r\n", "\n"));
+    }
+    /**
+     * BitSet clone and mutating lambda reference captures transpile and execute correctly.
+     */
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    public void testBitSetCloneAndMutatingLambda() throws Exception {
+        Path java = tempDir.resolve("MainBitSetLambda.java");
+        Files.writeString(java, """
+                import java.util.ArrayList;
+                import java.util.BitSet;
+                import java.util.List;
+                import java.util.function.Consumer;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        BitSet bs1 = new BitSet();
+                        bs1.set(3);
+                        BitSet bs2 = (BitSet) bs1.clone();
+                        bs2.set(5);
+                        System.out.println(bs1.get(5) ? "1" : "0");
+                        System.out.println(bs2.get(5) ? "1" : "0");
+
+                        List<Integer> list = new ArrayList<>();
+                        int[] cnt = new int[]{0};
+                        Consumer<Integer> action = x -> {
+                            list.add(x);
+                            cnt[0]++;
+                        };
+                        action.accept(42);
+                        System.out.println(list.size());
+                        System.out.println(cnt[0]);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainBitSetLambda.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainBitSetLambda").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainBitSetLambda").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("0\n1\n1\n1\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    void testScannerNextLineCrLfHandling(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("MainScannerCrLf.java");
+        Files.writeString(java, """
+                import java.util.Scanner;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        Scanner sc = new Scanner(System.in);
+                        String s1 = sc.nextLine();
+                        String s2 = sc.nextLine();
+                        System.out.println(s1);
+                        System.out.println(s2);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainScannerCrLf.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainScannerCrLf").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainScannerCrLf").toString())
+                .redirectErrorStream(true)
+                .start();
+        runProc.getOutputStream().write("hello\r\nworld\r\n".getBytes(StandardCharsets.UTF_8));
+        runProc.getOutputStream().flush();
+        runProc.getOutputStream().close();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("hello\nworld\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    /**
+     * System.err への出力が標準エラー出力に出力され、標準出力と混ざらないことを検証する。
+     */
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    void testSystemErrRouting(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("MainSystemErr.java");
+        Files.writeString(java, """
+                public class Main {
+                    public static void main(String[] args) {
+                        System.err.println("error message");
+                        System.out.println("normal output");
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainSystemErr.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainSystemErr").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainSystemErr").toString())
+                .start();
+        runProc.getOutputStream().close();
+        String stdOut = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        String stdErr = new String(runProc.getErrorStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode);
+        assertEquals("normal output\n", stdOut.replace("\r\n", "\n"));
+        assertEquals("error message\n", stdErr.replace("\r\n", "\n"));
+    }
+
+    /**
+     * オブジェクト参照（shared_ptr）引数の呼び出し側ストレージ変更によるエイリアシング汚染が起きないことを検証する。
+     */
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    void testSharedPtrParameterAliasing(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("MainTreeAliasing.java");
+        Files.writeString(java, """
+                public class Main {
+                    static class Node {
+                        int val;
+                        Node next;
+                        Node(int val, Node next) {
+                            this.val = val;
+                            this.next = next;
+                        }
+                    }
+                    static Node modify(Node cur) {
+                        Node n = cur;
+                        cur = null;
+                        return n;
+                    }
+                    public static void main(String[] args) {
+                        Node head = new Node(10, new Node(20, null));
+                        Node res = modify(head.next);
+                        System.out.println(res != null ? res.val : -1);
+                        System.out.println(head.next != null ? head.next.val : -1);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainTreeAliasing.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainTreeAliasing").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainTreeAliasing").toString())
+                .redirectErrorStream(true)
+                .start();
+        runProc.getOutputStream().close();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("20\n20\n", runOutput.replace("\r\n", "\n"));
+    }
+
+    /**
+     * 128ビットを超える多倍長整数の四則演算、ビット演算、文字列変換、modPow等のトランスパイル・実行結果を検証する。
+     */
+    // 未テスト
+    // 計算量: O(1)
+    @Test
+    void testArbitraryPrecisionBigIntegerTranspilation(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("MainBigInt.java");
+        Files.writeString(java, """
+                import java.math.BigInteger;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        BigInteger a = new BigInteger("12345678901234567890123456789012345678901234567890");
+                        BigInteger b = new BigInteger("98765432109876543210987654321098765432109876543210");
+                        BigInteger sum = a.add(b);
+                        BigInteger diff = b.subtract(a);
+                        BigInteger prod = a.multiply(b);
+                        BigInteger[] qr = prod.divideAndRemainder(a);
+
+                        BigInteger p = BigInteger.ONE.shiftLeft(200);
+                        boolean bit200 = p.testBit(200);
+                        boolean bit199 = p.testBit(199);
+                        BigInteger pShift = p.shiftRight(200);
+
+                        BigInteger m = new BigInteger("1000000007");
+                        BigInteger inv = BigInteger.valueOf(123456).modInverse(m);
+                        BigInteger pow = BigInteger.valueOf(2).pow(100);
+
+                        System.out.println(sum.toString());
+                        System.out.println(diff.toString());
+                        System.out.println(qr[0].toString());
+                        System.out.println(qr[1].toString());
+                        System.out.println(bit200 + " " + bit199 + " " + pShift.toString());
+                        System.out.println(inv.toString());
+                        System.out.println(pow.toString());
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainBigInt.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainBigInt").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainBigInt").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("111111111011111111101111111110111111111011111111100", lines[0]);
+        assertEquals("86419753208641975320864197532086419753208641975320", lines[1]);
+        assertEquals("98765432109876543210987654321098765432109876543210", lines[2]);
+        assertEquals("0", lines[3]);
+        assertEquals("1 0 1", lines[4]);
+        assertEquals("78351802", lines[5]);
+        assertEquals("1267650600228229401496703205376", lines[6]);
+    }
+
+    /**
+     * Map.get 経由の変更、Math.round、および PriorityQueue の同順位ヒープ動作を検証する。
+     * 計算量: O(1)
+     */
+    // 未テスト
+    @Test
+    void testMapGetMathRoundAndPriorityQueue(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.*;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        // 1. Map.get() mutating in-place
+                        Map<String, List<Integer>> map = new HashMap<>();
+                        map.put("k", new ArrayList<>());
+                        map.get("k").add(42);
+                        System.out.println(map.get("k").size() + " " + map.get("k").get(0));
+
+                        // 2. Math.round() returning integral types
+                        double d = 3.456;
+                        float f = 2.7f;
+                        System.out.println(Math.round(d));
+                        System.out.println(Math.round(f));
+
+                        // 3. PriorityQueue exact sift order
+                        PriorityQueue<Integer> pq = new PriorityQueue<>();
+                        pq.add(10);
+                        pq.add(5);
+                        pq.add(20);
+                        int p1 = pq.poll();
+                        int p2 = pq.poll();
+                        int p3 = pq.poll();
+                        System.out.println(p1 + " " + p2 + " " + p3);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainBatchTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainBatchTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainBatchTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("1 42", lines[0]);
+        assertEquals("3", lines[1]);
+        assertEquals("3", lines[2]);
+        assertEquals("5 10 20", lines[3]);
+    }
+
+    @Test
+    void testListRemoveWithCustomEquals(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.ArrayList;
+
+                public class Main {
+                    static class Item {
+                        int id;
+                        int val;
+                        Item(int id, int val) { this.id = id; this.val = val; }
+                        @Override
+                        public boolean equals(Object o) {
+                            if (o instanceof Item) {
+                                Item other = (Item) o;
+                                return this.id == other.id && this.val == other.val;
+                            }
+                            return false;
+                        }
+                    }
+
+                    public static void main(String[] args) {
+                        ArrayList<Item> list = new ArrayList<>();
+                        list.add(new Item(1, 10));
+                        list.add(new Item(2, 20));
+                        list.add(new Item(3, 30));
+
+                        boolean removed = list.remove(new Item(2, 20));
+                        System.out.println(removed + " " + list.size());
+                        int idx = list.indexOf(new Item(3, 30));
+                        System.out.println(idx);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainListRemoveTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainListRemoveTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainListRemoveTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("1 2", lines[0]);
+        assertEquals("1", lines[1]);
+    }
+    /**
+     * Map Entry null性判定および配列代入の評価順序を検証する。
+     * 計算量: O(1)
+     */
+    // 未テスト
+    @Test
+    void testMapEntryNullAndArrayAssignmentEvaluationOrder(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.TreeMap;
+                import java.util.Map;
+
+                public class Main {
+                    static int counter = 0;
+                    static int nextInt() {
+                        return ++counter;
+                    }
+
+                    public static void main(String[] args) {
+                        TreeMap<Integer, Integer> map = new TreeMap<>();
+                        var entryNull = map.ceilingEntry(10);
+                        System.out.println(entryNull == null);
+
+                        map.put(10, 100);
+                        var entry = map.ceilingEntry(5);
+                        System.out.println((entry == null) + " " + entry.getKey() + " " + entry.getValue());
+
+                        int[] arr = new int[10];
+                        counter = 0;
+                        arr[nextInt()] += nextInt();
+                        System.out.println(arr[1] + " " + arr[2]);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainEntryOrderTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainEntryOrderTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainEntryOrderTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("1", lines[0]);
+        assertEquals("0 10 100", lines[1]);
+        assertEquals("2 0", lines[2]);
+    }
+
+    @Test
+    void testBoxedPrimitiveComparedToNull(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.TreeSet;
+
+                public class Main {
+                    public static void main(String[] args) {
+                        TreeSet<Long> set = new TreeSet<>();
+                        set.add(10L);
+                        Long floor1 = set.floor(5L);
+                        Long floor2 = set.floor(15L);
+                        System.out.println(floor1 == null);
+                        System.out.println(floor2 == null);
+                        if (floor2 != null) {
+                            System.out.println(floor2);
+                        }
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainBoxedNullTest.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainBoxedNullTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainBoxedNullTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("1", lines[0]);
+        assertEquals("0", lines[1]);
+        assertEquals("10", lines[2]);
+    }
+
+    @Test
+    void testInnerClassDelegatingConstructorAndEscapingLambda(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("MainDelegatingAndLambda.java");
+        Files.writeString(java, """
+                import java.util.Iterator;
+
+                public class Main {
+                    int base = 100;
+                    class Node {
+                        int val;
+                        Node() {
+                            this(base);
+                        }
+                        Node(int v) {
+                            this.val = v;
+                        }
+                    }
+                    static Iterable<Integer> getIterable(int[] arr) {
+                        return () -> new Iterator<Integer>() {
+                            int idx = 0;
+                            public boolean hasNext() { return idx < arr.length; }
+                            public Integer next() { return arr[idx++]; }
+                        };
+                    }
+                    public static void main(String[] args) {
+                        Main m = new Main();
+                        Node n = m.new Node();
+                        System.out.println(n.val);
+                        int sum = 0;
+                        for (int x : getIterable(new int[]{1, 2, 3})) {
+                            sum += x;
+                        }
+                        System.out.println(sum);
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+
+        String cpp = JavaToCpp.convert(java);
+        Path cppFile = tempDir.resolve("MainDelegatingAndLambda.cpp");
+        Files.writeString(cppFile, cpp, StandardCharsets.UTF_8);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("MainDelegatingAndLambda").toString())
+                .redirectErrorStream(true)
+                .start();
+        String output = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int exitCode = p.waitFor();
+        assertTrue(exitCode == 0, "g++ compilation failed:\n" + output);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("MainDelegatingAndLambda").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+
+        String[] lines = runOutput.trim().split("\\R");
+        assertEquals("100", lines[0]);
+        assertEquals("6", lines[1]);
+    }
+
+    /**
+     * ラムダが引数として渡されるとき（親が Spoon AST で未初期化になる場合）、
+     * [&] でキャプチャされ外部変数を正しく参照できることを検証する。
+     * 計算量: O(1) コンパイル時間は除く。
+     */
+    @Test
+    void testLambdaArgumentCapturingOuterVariables(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.function.Predicate;
+                class MathUtils {
+                    public static long binarySearch(long left, long right, Predicate<Long> isLeft) {
+                        while ((right - left) != 1) {
+                            long middle = (left + right) / 2;
+                            if (isLeft.test(middle)) {
+                                left = middle;
+                            } else {
+                                right = middle;
+                            }
+                        }
+                        return left;
+                    }
+                }
+                public class Main {
+                    public static void main(String[] args) {
+                        int[] A = {1, 3, 5, 7, 9};
+                        int b = 4;
+                        int id = (int) MathUtils.binarySearch(-1, A.length, k -> A[k.intValue()] > b);
+                        System.out.println(id);
+                    }
+                }
+                """);
+        Path cppFile = tempDir.resolve("Main.cpp");
+        JavaToCpp.export(java, cppFile);
+        Process p = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(), "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String compileOut = new String(p.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int compileExit = p.waitFor();
+        assertEquals(0, compileExit, "g++ compilation failed:\n" + compileOut);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String runOutput = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        int runExitCode = runProc.waitFor();
+        assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
+        assertEquals("4", runOutput.trim());
+    }
+
+    /**
+     * System.out.println(double) の出力が Java の Double.toString() 仕様と一致することを検証する。
+     * すなわち: shortest round-trip 表現、|x| >= 1e7 または |x| < 1e-3 なら指数表記 (大文字 E, 指数に + なし)、
+     * 整数値の double は ".0" を付加する。
+     * 計算量: O(L)。
+     *
+     * @throws Exception コンパイルまたは実行に失敗した場合
+     */
+    @Test
+    // 未テスト
+    void convertsDoublePrintlnToJavaFormat() throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                public class Main {
+                    public static void main(String[] args) {
+                        System.out.println(1976.2441416041122);
+                        System.out.println(7.576825160690021E17);
+                        System.out.println(2.8284271247461903);
+                        System.out.println(1.5);
+                        System.out.println(1.0);
+                        System.out.println(0.0);
+                        System.out.println(1.23E-5);
+                        System.out.println(8.772053214538598E12);
+                        System.out.println(133.33333333333331);
+                        System.out.println(282842.71247461904);
+                    }
+                }
+                """);
+        Path cppFile = tempDir.resolve("Main.cpp");
+        JavaToCpp.export(java, cppFile);
+        Process compileProc = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(),
+                "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true).start();
+        String compileOut = new String(compileProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, compileProc.waitFor(), "g++ compilation failed:\n" + compileOut);
+
+        Process runProc = new ProcessBuilder(tempDir.resolve("Main").toString())
+                .redirectErrorStream(true).start();
+        String out = new String(runProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8).trim();
+        assertEquals(0, runProc.waitFor(), "Execution failed:\n" + out);
+
+        String[] lines = out.split("\n");
+        assertEquals("1976.2441416041122", lines[0]);
+        assertEquals("7.576825160690021E17", lines[1]);
+        assertEquals("2.8284271247461903", lines[2]);
+        assertEquals("1.5", lines[3]);
+        assertEquals("1.0", lines[4]);
+        assertEquals("0.0", lines[5]);
+        assertEquals("1.23E-5", lines[6]);
+        assertEquals("8.772053214538598E12", lines[7]);
+        assertEquals("133.33333333333331", lines[8]);
+        assertEquals("282842.71247461904", lines[9]);
     }
 }

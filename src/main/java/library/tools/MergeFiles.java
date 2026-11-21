@@ -76,7 +76,7 @@ public class MergeFiles {
 	 */
 	// 未テスト
 	public static void export() throws IOException {
-		exportImpl("Main", "solver/src/main/java/Main.java", Paths.get("out", "Main.java").toString(), false);
+		exportImpl("Main", "src/main/java/Main.java", Paths.get("out", "Main.java").toString(), false);
 	}
 
 	/**
@@ -86,7 +86,7 @@ public class MergeFiles {
 	 */
 	// 未テスト
 	public static void exportRemovingSpaceAndComment() throws IOException {
-		exportImpl("Main", "solver/src/main/java/Main.java", Paths.get("out", "Main.java").toString(), true);
+		exportImpl("Main", "src/main/java/Main.java", Paths.get("out", "Main.java").toString(), true);
 	}
 
 	private static Path projectRoot = null;
@@ -97,7 +97,7 @@ public class MergeFiles {
 		Path cur = Paths.get("").toAbsolutePath();
 		while (cur != null) {
 			if (Files.exists(cur.resolve("src/main/java/library"))
-					&& Files.exists(cur.resolve("solver/src/main/java"))) {
+					&& Files.exists(cur.resolve("src/main/java"))) {
 				projectRoot = cur;
 				return projectRoot;
 			}
@@ -184,7 +184,7 @@ public class MergeFiles {
 	private static SourceSelection selectInputFiles(Path mainFile) throws IOException {
 		Path root = getProjectRoot();
 		List<Path> sourceFiles = new ArrayList<>();
-		for (Path sourceRoot : List.of(root.resolve("solver/src/main/java"), root.resolve("src/main/java"))) {
+		for (Path sourceRoot : List.of(root.resolve("src/main/java"), root.resolve("src/main/java"))) {
 			try (var paths = Files.walk(sourceRoot)) {
 				paths.filter(Files::isRegularFile)
 						.filter(path -> path.toString().endsWith(".java"))
@@ -523,7 +523,7 @@ public class MergeFiles {
 			outputStr = removeCommentsAndWhitespace(merged);
 		} else {
 			String originalCode = Files.readString(getProjectRoot().resolve(mainFilePath));
-			StringBuilder commented = new StringBuilder("\n// --- Original Code ---\n");
+			StringBuilder commented = new StringBuilder("\n// --- Original Code ---\n //library:https://github.com/Maruoka842/library_public \n");
 			for (String line : originalCode.split("\n", -1)) {
 				commented.append("// ").append(line).append("\n");
 			}
@@ -556,14 +556,14 @@ public class MergeFiles {
 			launcher.getEnvironment().setCommentEnabled(false);
 		Path stage = stageSources(new ArrayList<>(selected));
 		try {
-			Path stagedSolverRoot = stage.resolve("solver/src/main/java");
+			Path stagedSolverRoot = stage.resolve("src/main/java");
 			Path stagedLibraryRoot = stage.resolve("src/main/java");
 			if (Files.exists(stagedSolverRoot))
 				launcher.addInputResource(stagedSolverRoot.toString());
 			if (Files.exists(stagedLibraryRoot))
 				launcher.addInputResource(stagedLibraryRoot.toString());
 			for (Path source : selected) {
-				if (!source.startsWith(getProjectRoot().resolve("solver/src/main/java"))
+				if (!source.startsWith(getProjectRoot().resolve("src/main/java"))
 						&& !source.startsWith(getProjectRoot().resolve("src/main/java"))) {
 					Path relative = source.startsWith(getProjectRoot()) ? getProjectRoot().relativize(source)
 							: Path.of("external", source.getFileName().toString());

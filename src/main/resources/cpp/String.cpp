@@ -151,6 +151,9 @@ inline int jlastIndexOf(const JString& s, char ch, int fromIndex) {
 }
 inline JString jsubstring(const JString& s, int begin) { return s.substr(begin); }
 inline JString jsubstring(const JString& s, int begin, int end) { return s.substr(begin, max(0, end - begin)); }
+// 未テスト
+// 計算量: O(max(0, end - begin))
+inline JString jsubsequence(const JString& s, int begin, int end) { return jsubstring(s, begin, end); }
 inline vector<JString> jsplit(const JString& s, const JString& regex) {
     vector<JString> result;
     std::regex re(regex);

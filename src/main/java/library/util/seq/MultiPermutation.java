@@ -226,32 +226,6 @@ public class MultiPermutation {
 	}
 
 	/**
-	 * 各値 i について、i = a[k] となるインデックス k を昇順に並べた配列を返す。
-	 * 未テスト。
-	 *
-	 * 戻り値 res は res[i] = {k | a[k] = i} を表す。
-	 * 0 ≤ a[i] < a.length を仮定する。
-	 *
-	 * @param a 多重順列
-	 * @return res[i] = {k | a[k] = i}
-	 * @complexity O(a.length)
-	 */
-	public static int[][] positions(int[] a) {
-		int n = a.length;
-		int[] counts = bincount(a);
-		int[][] res = new int[n][];
-		for (int i = 0; i < n; i++) {
-			res[i] = new int[counts[i]];
-		}
-		int[] ptr = new int[n];
-		for (int k = 0; k < n; k++) {
-			int val = a[k];
-			res[val][ptr[val]++] = k;
-		}
-		return res;
-	}
-
-	/**
 	 * 転倒数を返す。未テスト。
 	 * @param a
 	 * @return
@@ -412,7 +386,7 @@ public class MultiPermutation {
 	 * @return ret[i] = max { j | j < i かつ a[j] = a[i] }。存在しない場合は -1。
 	 * @complexity O(a.length) (max(a) < a.length かつ min(a) >= 0 の場合), O(a.length log(a.length)) (それ以外の場合)
 	 */
-	public static int[] prevOccurences(int[] a) {
+	public static int[] prevOccurrences(int[] a) {
 		if (a.length == 0) {
 			return new int[0];
 		}
@@ -421,7 +395,7 @@ public class MultiPermutation {
 			int minVal = ArrayUtils.min(a);
 			if (minVal < 0) {
 				int[] compressed = ArrayUtils.compress(a);
-				return prevOccurences(compressed);
+				return prevOccurrences(compressed);
 			}
 			int[] ret=new int[a.length];
 			int[] last=new int[maxVal + 1];
@@ -433,7 +407,7 @@ public class MultiPermutation {
 			return ret;
 		} else {
 			int[] compressed = ArrayUtils.compress(a);
-			return prevOccurences(compressed);
+			return prevOccurrences(compressed);
 		}
 	}
 	

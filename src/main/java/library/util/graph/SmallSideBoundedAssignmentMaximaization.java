@@ -18,7 +18,7 @@ import library.util.collections.TreapSet;
  *   （特に K <= N のとき、O(N K^2 log N)）
  *   空間計算量: O(N K + K^2)
  */
-public final class SmallSideBoundedAssignment {
+public final class SmallSideBoundedAssignmentMaximaization {
 
 	/**
 	 * 割り当て問題の最適解を表すクラス。

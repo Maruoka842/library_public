@@ -1,3 +1,4 @@
+template<class T> struct JStream;
 inline vector<JObject> jlistOf() { return {}; }
 template<class T> auto jlistOf(const vector<T>& v) { return v; }
 template<class T, class... U> auto jlistOf(T first, U... rest) {
@@ -21,10 +22,25 @@ template<class T> struct JList : vector<T> {
     JList(Iter first, Iter last) : vector<T>(first, last) {}
     template<class Container, class = enable_if_t<!is_convertible_v<Container, std::size_t> && !is_same_v<decay_t<Container>, JList> && !is_same_v<decay_t<Container>, vector<T>>>>
     JList(const Container& container) {
-        for (const auto& item : container) this->push_back(item);
+        for (const auto& item : container) {
+            if constexpr (is_same_v<decay_t<decltype(item)>, JObject>) this->push_back(any_cast<T>(item));
+            else this->push_back(item);
+        }
     }
     bool add(const T& x) { this->push_back(x); return true; }
     void add(int i, const T& x) { this->insert(this->begin() + i, x); }
+    // 未テスト
+    // 計算量: O(N)
+    void addFirst(const T& x) { this->insert(this->begin(), x); }
+    // 未テスト
+    // 計算量: O(1)
+    void addLast(const T& x) { this->push_back(x); }
+    // 未テスト
+    // 計算量: O(1)
+    T getFirst() const { return this->front(); }
+    // 未テスト
+    // 計算量: O(1)
+    T getLast() const { return this->back(); }
     T get(int i) const { return (*this)[i]; }
     T set(int i, const T& x) { T old = (*this)[i]; (*this)[i] = x; return old; }
     int size() const { return (int)vector<T>::size(); }
@@ -32,6 +48,20 @@ template<class T> struct JList : vector<T> {
     T remove(int index) {
         T old = (*this)[index];
         this->erase(this->begin() + index);
+        return old;
+    }
+    // 未テスト
+    // 計算量: O(N)
+    T removeFirst() {
+        T old = this->front();
+        this->erase(this->begin());
+        return old;
+    }
+    // 未テスト
+    // 計算量: O(1)
+    T removeLast() {
+        T old = this->back();
+        this->pop_back();
         return old;
     }
     template<class Arg>
@@ -43,7 +73,7 @@ template<class T> struct JList : vector<T> {
                 return false;
             } else {
                 auto it = std::find_if(this->begin(), this->end(), [&](const T& item) {
-                    if constexpr (is_convertible_v<Arg, T>) return item == x;
+                    if constexpr (is_convertible_v<Arg, T>) return jequals(item, x);
                     else if constexpr (jhas_key<T>::value) return item->key == x;
                     else if constexpr (jhas_key_obj<T>::value) return item.key == x;
                     else return false;
@@ -53,7 +83,7 @@ template<class T> struct JList : vector<T> {
             }
         } else {
             auto it = std::find_if(this->begin(), this->end(), [&](const T& item) {
-                if constexpr (is_convertible_v<Arg, T>) return item == x;
+                if constexpr (is_convertible_v<Arg, T>) return jequals(item, x);
                 else if constexpr (jhas_key<T>::value) return item->key == x;
                 else if constexpr (jhas_key_obj<T>::value) return item.key == x;
                 else return false;
@@ -124,30 +154,36 @@ template<class T> struct JList : vector<T> {
             return jequals(item, x);
         }) != this->end();
     }
-    int indexOf(const T& x) const {
-        auto it = std::find(this->begin(), this->end(), x);
+    template<class Arg = T>
+    int indexOf(const Arg& x) const {
+        auto it = std::find_if(this->begin(), this->end(), [&](const T& item) {
+            return jequals(item, x);
+        });
         return it == this->end() ? -1 : (int)distance(this->begin(), it);
     }
-    int lastIndexOf(const T& x) const {
-        auto it = std::find(this->rbegin(), this->rend(), x);
+    template<class Arg = T>
+    int lastIndexOf(const Arg& x) const {
+        auto it = std::find_if(this->rbegin(), this->rend(), [&](const T& item) {
+            return jequals(item, x);
+        });
         return it == this->rend() ? -1 : (int)(this->size() - 1 - distance(this->rbegin(), it));
     }
     template<class Comp> void sort(Comp comp) {
         if constexpr (is_same_v<decay_t<Comp>, nullptr_t>) {
-            std::sort(this->begin(), this->end());
+            std::stable_sort(this->begin(), this->end(), jless_fn);
         } else {
             using R = invoke_result_t<Comp, const T&, const T&>;
-            std::sort(this->begin(), this->end(), [&](const auto& a, const auto& b) {
+            std::stable_sort(this->begin(), this->end(), [&](const auto& a, const auto& b) {
                 if constexpr (is_same_v<R, bool>) return comp(a, b);
                 else return comp(a, b) < 0;
             });
         }
     }
     void sort(nullptr_t) {
-        std::sort(this->begin(), this->end());
+        std::stable_sort(this->begin(), this->end(), jless_fn);
     }
     void sort() {
-        std::sort(this->begin(), this->end());
+        std::stable_sort(this->begin(), this->end(), jless_fn);
     }
     JList<T> subList(int fromIndex, int toIndex) const {
         if (fromIndex < 0) fromIndex = 0;
@@ -155,5 +191,5 @@ template<class T> struct JList : vector<T> {
         if (fromIndex >= toIndex) return JList<T>{};
         return JList<T>(this->begin() + fromIndex, this->begin() + toIndex);
     }
-    JStream<T> stream() const { return JStream<T>(*this); }
+    auto stream() const { return JStream<T>(*this); }
 };

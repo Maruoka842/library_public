@@ -46,7 +46,8 @@ public class LongValueDigraph {
 	}
 	
 	public void addEdge(int from, int to, long cost) {
-		if(from>=N || to>=N)throw new AssertionError();
+		if(from>=N)throw new AssertionError();
+		if(to>=N)throw new AssertionError();
 		adj[from].add(new Edge(from, to, cost));
 		++M;
 	}
@@ -456,6 +457,60 @@ public class LongValueDigraph {
 		}
 		return g;
 	}
+
+	/**
+	 * 各弱連結成分を誘導部分グラフとして独立した新たな LongValueDigraph インスタンスに再構築し、その配列を返す。
+	 * 辺の向きを無視した連結成分（弱連結成分）ごとに分解し、各成分の頂点番号は 0 以上 各成分の頂点数未満 にリラベルされる。
+	 * 連結成分の順序は各成分に含まれる最小頂点番号の昇順となる。
+	 * 各有向辺の向き、重み、多重辺、自己ループを含むすべての辺情報が各部分グラフに保持される。
+	 *
+	 * 計算量: O(N + M alpha(N))
+	 *
+	 * @return 各弱連結成分を表す LongValueDigraph の配列
+	 */
+	// 未テスト
+	public LongValueDigraph[] connectedComponents() {
+		library.util.unionfind.UnionFind uf = new library.util.unionfind.UnionFind(N);
+		for (int u = 0; u < N; u++) {
+			for (Edge e : adj[u]) {
+				uf.union(u, e.dst);
+			}
+		}
+		int[] compId = new int[N];
+		Arrays.fill(compId, -1);
+		int k = 0;
+		for (int i = 0; i < N; i++) {
+			int root = uf.root(i);
+			if (compId[root] == -1) {
+				compId[root] = k++;
+			}
+			compId[i] = compId[root];
+		}
+		@SuppressWarnings("unchecked")
+		ArrayList<Integer>[] comps = new ArrayList[k];
+		for (int i = 0; i < k; i++) comps[i] = new ArrayList<>();
+		for (int i = 0; i < N; i++) {
+			comps[compId[i]].add(i);
+		}
+		LongValueDigraph[] res = new LongValueDigraph[k];
+		int[] mapping = new int[N];
+		for (int c = 0; c < k; c++) {
+			ArrayList<Integer> comp = comps[c];
+			int sz = comp.size();
+			for (int i = 0; i < sz; i++) {
+				mapping[comp.get(i)] = i;
+			}
+			LongValueDigraph g = new LongValueDigraph(sz);
+			for (int u : comp) {
+				int newU = mapping[u];
+				for (Edge e : adj[u]) {
+					g.addEdge(newU, mapping[e.dst], e.cost);
+				}
+			}
+			res[c] = g;
+		}
+		return res;
+	}
 	
 	
 	
@@ -668,6 +723,12 @@ public class LongValueDigraph {
 		long maxM = (long) N * N;
 		int M = maxM == 0 ? 0 : (int) rnd.nextLong(maxM + 1);
 		return randomDiGraph(N, M, 1L, 1L, rnd);
+	}
+	
+	public void clearEdges() {
+		for (int i = 0; i < N; i++) {
+			adj[i].clear();
+		}
 	}
 
 	void tr(Object...objects) {System.out.println(Arrays.deepToString(objects));}

@@ -4,10 +4,87 @@ import java.util.Arrays;
 
 import library.util.ArrayUtils;
 import library.util.MaxPlus;
+import library.util.algebra.strategy.longs.LongCommutativeRingStrategy;
 import library.util.graph.tree.Tree.DpStrategy;
 import library.util.seq.SortedArrays;
 
 public class TreedpFactory {
+
+	
+	/**
+	 * 木上の頂点素な K 本のパス集合について、
+	 * 各集合に含まれる各パスの重み（頂点重みの積）の総和を求めるための DP を行う。
+	 * 1 頂点のみからなるパスも許す。
+	 * <p>返す配列 {@code dp} は {@code dp[v][e][k]} の形をしており、
+	 * 頂点 v を根とする部分木内の頂点素な k 本のパス集合について、
+	 * 各集合のパスの重みの積を足し合わせた値を表す。
+	 * ここで {@code e} は v から親への辺を使うかどうかを表す。</p>
+	 * <p>木全体の答えは {@code dp[root][0][K]} である。
+	 * 根には親がないため、{@code dp[root][1]} は意味を持たない。</p>
+	 *
+	 * <p>計算量は O(NK) である。
+	 * @param tree 根付き木
+	 * @param K パス集合に含めるパスの本数
+	 * @param A 各頂点の重み
+	 * @param ring 可換環上の演算
+	 * @return 各頂点を根とする部分木 DP
+	 */
+	public static long[][][] sumDisjointPath(Tree tree, int K, long[] A, LongCommutativeRingStrategy ring) {
+		if (!tree.isRooted()) throw new AssertionError();
+		int N=tree.N;
+		var order=tree.bfsOrder.clone();
+		ArrayUtils.reverse(order);
+		long[][][]dp=new long[N][2][K+1];//頂点, 根から親への辺を使っているか, パスの個数 
+		ArrayUtils.fill(dp, ring.zero());
+		for (int i : order) {
+			long[][]f=new long[3][K+1];
+			//0:端点なし, 1:根が端点, 2:根経由のパスが存在
+			ArrayUtils.fill(f, ring.zero());
+			f[0][0]=ring.one();
+			int maxJ = 0; // f に含まれる有効なパス数の最大値
+			for (int ch : tree.childs[i]) {
+				long[][]nf=new long[3][K+1];
+				ArrayUtils.fill(nf, ring.zero());
+				int maxL = Math.min(tree.size(ch), K);
+				for (int j = 0; j <= maxJ; j++) {
+					for (int l = 0; l <= maxL; l++) {
+						for (int state = 0; state <= 2; state++) {
+							for (int isParentEdgeUsed = 0; isParentEdgeUsed <= 1; isParentEdgeUsed++) {
+								if (isParentEdgeUsed == 1 && state == 2) continue;
+								int pathNum=j+l;
+								if(isParentEdgeUsed==1 && state==1)pathNum-=1;
+								if(pathNum>K||pathNum<0)continue;
+								int nextState = state + isParentEdgeUsed;
+								nf[nextState][pathNum]=ring.add(nf[nextState][pathNum], ring.mul(f[state][j], dp[ch][isParentEdgeUsed][l]));
+							}
+						}
+					}
+				}
+				f=nf;
+				maxJ = Math.min(K, maxJ + maxL);
+			}
+			for (int k = 0; k <= K; k++) {
+				// i はどのパスにも属さない
+				dp[i][0][k] = ring.add(dp[i][0][k], f[0][k]);
+				// i は長さ0のパスの頂点
+				if (k + 1 <= K) {
+					long v = ring.mul(f[0][k], A[i]);
+					dp[i][0][k + 1] = ring.add(dp[i][0][k + 1], v);
+					dp[i][1][k + 1] = ring.add(dp[i][1][k + 1], v);
+				}
+				long v1 = ring.mul(f[1][k], A[i]);
+				// 閉じる
+				dp[i][0][k] = ring.add(dp[i][0][k], v1);
+				// 親へ伸ばす
+				dp[i][1][k] = ring.add(dp[i][1][k], v1);
+				// 部分木から i を内点としてを経由するパス
+				dp[i][0][k] = ring.add(dp[i][0][k], ring.mul(f[2][k], A[i]));
+			}
+			
+		}
+		return dp;
+	}
+	
 	
 	/**
 	 * 頂点vの重みをA[v]とする木上の最大重み独立集合（Maximum Weighted Independent Set; MWIS）について、

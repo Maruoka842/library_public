@@ -2,7 +2,18 @@ package library.util;
 
 public class Longs {
 	
-	public int[] toDigitArray(long a) {
+	public static String toBinaryStringPadded(long x) {
+	    String s = Long.toBinaryString(x);
+	    return "0".repeat(64 - s.length()) + s;
+	}
+	
+	public static String toBinaryStringPadded(long x, int len) {
+	    String s = Long.toBinaryString(x);
+	    return "0".repeat(len - s.length()) + s;
+	}
+	
+	
+	public static int[] toDigitArray(long a) {
 		if(a==0)return new int[] {0};
 		if(a<0)throw new AssertionError();
 		int[]ret=new int[MathUtils.floorLog10(a)+1];

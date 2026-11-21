@@ -157,6 +157,28 @@ public class MatrixUtilsF2 {
 		}
 		return ret;
 	}
+	
+	/**
+	 * 未テスト
+	 * @param a
+	 * @param e
+	 * @return
+	 */
+	public static boolean[][] mod2Pow(boolean[][] a, long e) {
+		int n = a.length;
+		var mat=packToBitMatrix(a);
+		var ret=packMod2Identity(n);
+		if(e<0)throw new AssertionError();
+		while(e != 0) {
+			if(e%2==1) {
+				ret=mod2Mul(mat, ret, n, n, n);
+			}
+			if(e==0)break;
+			mat=mod2Mul(mat, mat, n, n, n);
+			e/=2;
+		}
+		return unpackBitMatrix(ret, n, n);
+	}
 
 	public static boolean[][] mod2Mul(boolean[][] a, boolean[][] b) {
 		//https://judge.yosupo.jp/submission/370827
@@ -199,6 +221,15 @@ public class MatrixUtilsF2 {
 		boolean[][] ret=new boolean[n][n];
 		for(int i=0;i<n;++i)ret[i][i]=true;
 		return ret;
+	}
+	
+	private static long[][] packMod2Identity(int n) {
+	    int W = (n + 63) >>> 6;
+	    long[][] res = new long[n][W];
+	    for (int i = 0; i < n; i++) {
+	        res[i][i >>> 6] |= 1L << i;
+	    }
+	    return res;
 	}
 
 	public static boolean[][] pow(boolean[][] a, long n) {

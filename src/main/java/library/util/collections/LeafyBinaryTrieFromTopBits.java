@@ -116,6 +116,24 @@ public class LeafyBinaryTrieFromTopBits {
 		public int subtreeHit() {
 			return subtreeHit;
 		}
+		
+		public Node minNode() {
+		    if (subtreeHit == 0) throw new AssertionError();
+		    Node cur = this;
+		    while (cur.bit > 0) {
+		        cur = !cur.isLeftEmpty() ? cur.left() : cur.right();
+		    }
+		    return cur;
+		}
+		
+		public Node maxNode() {
+		    if (subtreeHit == 0) throw new AssertionError();
+		    Node cur = this;
+		    while (cur.bit > 0) {
+		        cur = !cur.isRightEmpty() ? cur.right() : cur.left();
+		    }
+		    return cur;
+		}
 	}
     
     public boolean isEmpty() {

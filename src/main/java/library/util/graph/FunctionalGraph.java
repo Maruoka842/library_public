@@ -6,6 +6,9 @@ import java.util.Queue;
 import java.util.function.DoubleToLongFunction;
 import java.util.function.IntPredicate;
 
+import library.util.collections.IntArrayList;
+import library.util.collections.IntDeque;
+
 /**
  * コンストラクタ呼び出しの時点で、サイクルの頂点の列挙とorderの計算を行う。
  */
@@ -143,6 +146,59 @@ public class FunctionalGraph {
 			}
 		}
 		return size;
+	}
+
+	/**
+	 * 始点集合 {@code sources} から、有向辺 v -> parent[v] に沿って距離 {@code cutoffDistance} 以内で到達可能な頂点列を BFS 順に返す。
+	 * {@code dist} は BFS の途中状態の距離配列と見なし、{@code sources} の各頂点 {@code s} について
+	 * {@code dist[s]} を上書きせずにそのまま探索の初期距離として使用する。
+	 * 遷移先頂点 {@code u} について {@code dist[u] > d + 1} のときのみ {@code dist[u] = d + 1} と更新して探索を継続する。
+	 *
+	 * <p>計算量: 到達可能な頂点数を V として O(V)。空間計算量 O(V)。</p>
+	 *
+	 * @param sources 始点集合
+	 * @param dist 各頂点への最短距離を記録する配列（呼び出し前の各始点 {@code s} の {@code dist[s]} はそのまま用いられる）
+	 * @param cutoffDistance 探索する最大距離（負数の場合は空配列を返す）
+	 * @return 到達可能な頂点を BFS 順に格納した配列
+	 */
+	// 未テスト
+	public int[] bfs(int[] sources, int[] dist, int cutoffDistance) {
+		if (cutoffDistance < 0 || sources == null || sources.length == 0 || N == 0) {
+			return new int[0];
+		}
+		IntDeque que = new IntDeque();
+		IntArrayList res = new IntArrayList();
+
+		int baseDist = dist[sources[0]];
+		for (int s : sources) {
+			if (dist[s] != baseDist) {
+				throw new AssertionError("sources have inconsistent distances");
+			}
+		}
+
+		if (baseDist > cutoffDistance) {
+			return new int[0];
+		}
+
+		for (int s : sources) {
+			que.addLast(s);
+			res.add(s);
+		}
+
+		while (que.isNonEmpty()) {
+			int v = que.pollFirst();
+			int d = dist[v];
+			if (d >= cutoffDistance) continue;
+			int u = parent[v];
+			if (u < 0 || u >= N) continue;
+			if (dist[u] > d + 1) {
+				dist[u] = d + 1;
+				res.add(u);
+				que.addLast(u);
+			}
+		}
+
+		return res.toArray();
 	}
 	
 	public void draw() {

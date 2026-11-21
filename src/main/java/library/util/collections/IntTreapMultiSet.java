@@ -356,6 +356,19 @@ public class IntTreapMultiSet {
 	}
 
 	/**
+	 * 値が {@code [l, r)} に含まれる要素の総数を返します。
+	 *
+	 * @param l 下限値（含む）
+	 * @param r 上限値（含まない）
+	 * @return 値が {@code [l, r)} に含まれる要素の総数。{@code l >= r} の場合は 0
+	 * @complexity O(log N) (N は異なる要素の数)
+	 */
+	// 未テスト
+	public long countRange(int l, int r) {
+		return map.rangeSum(l, (long) r);
+	}
+
+	/**
 	 * 集合に含まれない最小の非負整数を返します。
 	 *
 	 * <p>数学的定義: mex(S) = min { x ∈ ℕ₀ | x ∉ S }</p>

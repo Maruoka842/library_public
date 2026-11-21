@@ -1,6 +1,14 @@
 struct JScanner {
     JString next() { JString x; cin >> x; return x; }
-    JString nextLine() { JString s; string line; if (getline(cin >> ws, line)) s = line; return s; }
+    JString nextLine() {
+        JString s;
+        string line;
+        if (getline(cin >> ws, line)) {
+            while (!line.empty() && (line.back() == '\r' || line.back() == '\n')) line.pop_back();
+            s = line;
+        }
+        return s;
+    }
     int nextInt() { int x; cin >> x; return x; }
     long long nextLong() { long long x; cin >> x; return x; }
     double nextDouble() { double x; cin >> x; return x; }

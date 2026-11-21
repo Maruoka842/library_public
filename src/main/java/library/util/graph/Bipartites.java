@@ -2,6 +2,7 @@ package library.util.graph;
 
 import library.util.ArrayUtils;
 import library.util.collections.IntArrayList;
+import library.util.graph.flow.MinCut;
 
 public class Bipartites {
 	/**
