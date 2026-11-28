@@ -2,6 +2,7 @@ package library.util.poset;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Objects;
 import java.util.function.LongBinaryOperator;
 
 import library.util.ArrayUtils;
@@ -10,7 +11,6 @@ import library.util.Itertools;
 import library.util.MathUtils;
 import library.util.Sieve;
 import library.util.collections.ArrayOnQuotient;
-import library.util.collections.IntArrayList;
 import library.util.collections.LongArrayList;
 import library.util.seq.SortedArrays;
 
@@ -71,39 +71,24 @@ public class DivisorLattice {
 	 * @param mod    加算・減算に用いる法
 	 * @return Möbius 変換後の配列（元の関数値）
 	 */
-	public static long[] moebiusOnSubposet(long[] a, IntArrayList divs, IntArrayList primes, long mod) {
-    	//https://atcoder.jp/contests/abc349/submissions/71431698
-    	long[]b=Arrays.copyOf(a, a.length);
-    	for (long p:primes) {
-    		for (int i = divs.size() - 1; i >= 0; i--) {
-    			if(divs.get(i)<=divs.get(divs.size()-1)/p) {
-    				long nd=divs.get(i)*p;
-    				int id=SortedArrays.floor(divs, (int)nd);
-    				if(divs.get(id)!=nd)continue;
-    				b[id]=(b[id]+mod-b[i])%mod;
-    			}
-			}
-    	}
-    	return b;
-    }
+	public static long[] moebiusOnSubposet(long[] a, LongArrayList divs, LongArrayList primes, long mod) {
+		//https://atcoder.jp/contests/abc349/submissions/80913891
+	    int n = divs.size();
+	    long max = divs.get(n - 1);
+	    long[] b = Arrays.copyOf(a, a.length);
+		for (long p : primes) {
+		    int j = n - 1;
+		    for (int i = n - 1; i >= 0; i--) {
+		        long d = divs.get(i);
+		        if (d > max / p) continue;// 降順なので、先頭の方は読み飛ばす
+		        long nd = d * p;
+		        while (divs.get(j) > nd) j--;
+		        if (divs.get(j) == nd) b[j] = (b[j] + mod - b[i]) % mod;
+		    }
+		}
+		return b;
+	}
 	
-	public static long[] moebiusOnSuposet(long[] a, IntArrayList divs, IntArrayList primes, long mod) {
-    	//https://atcoder.jp/contests/abc349/submissions/71431698
-    	long[]b=Arrays.copyOf(a, a.length);
-    	for (long p:primes) {
-    		for (int i = divs.size() - 1; i >= 0; i--) {
-    			if(divs.get(i)<=divs.get(divs.size()-1)/p) {
-    				long nd=divs.get(i)*p;
-    				int id=SortedArrays.floor(divs, (int)nd);
-    				if(divs.get(id)!=nd)continue;
-    				b[id]=(b[id]+mod-b[i])%mod;
-    			}
-			}
-    	}
-    	return b;
-    }
-
-    
     /**
      * 約数束 (divisor lattice) 上の関数を，
      * その部分順序集合（特に下に閉じた部分集合）に制限した上でのゼータ変換を計算する。
@@ -144,21 +129,23 @@ public class DivisorLattice {
      * @param mod    加算に用いる法
      * @return 約数ゼータ変換後の配列
      */
-    public static long[] zetaOnSubposet(long[] a, LongArrayList divs, LongArrayList primes, long mod) {
-    	//https://atcoder.jp/contests/abc349/submissions/71431698
-    	long[]b=Arrays.copyOf(a, a.length);
-    	for (long p:primes) {
-    		for (int i = 0; i < divs.size(); i++) {
-    			if(divs.get(i)<=divs.get(divs.size()-1)/p) {
-    				long nd=divs.get(i)*p;
-				int id=SortedArrays.floor(divs, nd);
-    				if(divs.get(id)!=nd)continue;
-    				b[id]=(b[id]+b[i])%mod;
-    			}
-			}
-    	}
-    	return b;
-    }
+	public static long[] zetaOnSubposet(long[] a, LongArrayList divs, LongArrayList primes, long mod) {
+		//https://atcoder.jp/contests/abc349/submissions/80913891
+		int n = divs.size();
+	    long max = divs.get(n - 1);
+	    long[] b = Arrays.copyOf(a, a.length);
+	    for (long p : primes) {
+	        int j = 0;
+	        for (int i = 0; i < n; i++) {
+	            long d = divs.get(i);
+	            if (d > max / p) break;      // これ以降は全部超えるので continue ではなく break
+	            long nd = d * p;
+	            while (divs.get(j) < nd) j++; // nd <= max なので j は n-1 を超えない
+	            if (divs.get(j) == nd) b[j] = (b[j] + b[i]) % mod;
+	        }
+	    }
+	    return b;
+	}
 
     /**
      * 約数束上の zeta 変換を、任意の二項演算で行う。
@@ -409,6 +396,335 @@ public class DivisorLattice {
     	}
     	return a2;
     }
+    
+    
+    /**
+     * C[k] = Σ_{gcd(A[i], B[j]) = k} f[i] * g[j]   (k = 1..V)
+     * A.length == f.length, B.length == g.length。
+     * 計算量 O(V log V + N + M)
+     */
+    public static long[] gcdConvolution(int[] A, int[] B, long[] f, long[] g) {
+        if (A.length != f.length || B.length != g.length) throw new AssertionError();
+        int V = 0;
+        for (int x : A) V = Math.max(V, x);
+        for (int x : B) V = Math.max(V, x);
+
+        long[] sf = new long[V + 1], sg = new long[V + 1];
+        for (int i = 0; i < A.length; i++) sf[A[i]] += f[i];
+        for (int j = 0; j < B.length; j++) sg[B[j]] += g[j];
+
+        sf = supsetZeta(sf);   // sf[d] = Σ_{d | A[i]} f[i]
+        sg = supsetZeta(sg);
+        for (int d = 1; d <= V; d++) sf[d] *= sg[d];
+        sf[0] = 0;
+
+        Sieve.expandPrimes(V + 1);
+        for (int p = 2; p <= V; p++) {
+            if (Sieve.isPrime(p)) {
+                for (int j = 1; (long) p * j <= V; j++) sf[j] -= sf[p * j];
+            }
+        }
+        return sf;
+    }
+
+    /**
+     * C[k] = Σ_{gcd(A[i], B[j]) = k} f[i] * g[j]   (k = 1..V)
+     * A.length == f.length, B.length == g.length。
+     * 計算量 O(V log V + N + M)
+     */
+    public static long[] gcdConvolution(int[] A, int[] B, long[] f, long[] g, long mod) {
+        if (A.length != f.length || B.length != g.length) throw new AssertionError();
+        int V = 0;
+        for (int x : A) V = Math.max(V, x);
+        for (int x : B) V = Math.max(V, x);
+
+        long[] sf = new long[V + 1], sg = new long[V + 1];
+        for (int i = 0; i < A.length; i++) {
+            sf[A[i]] = (sf[A[i]] + (f[i] % mod + mod)) % mod;
+        }
+        for (int j = 0; j < B.length; j++) {
+            sg[B[j]] = (sg[B[j]] + (g[j] % mod + mod)) % mod;
+        }
+
+        sf = supsetZeta(sf, (x, y) -> (x + y) % mod);
+        sg = supsetZeta(sg, (x, y) -> (x + y) % mod);
+        for (int d = 1; d <= V; d++) sf[d] = sf[d] * sg[d] % mod;
+        sf[0] = 0;
+        return supsetMoebius(sf, mod);
+    }
+
+    /**
+     * D[j] = Σ_i f[i] * h[gcd(A[i], B[j])]   (j = 0..B.length-1)
+     * h.length >= V + 1 (V = max(A, B))。
+     * 計算量 O(V log V + N + M)
+     */
+    public static long[] gcdConvolutionTranspose(int[] A, int[] B, long[] f, long[] h) {
+        if (A.length != f.length) throw new AssertionError();
+        int V = 0;
+        for (int x : A) V = Math.max(V, x);
+        for (int x : B) V = Math.max(V, x);
+        if (h.length < V + 1) throw new AssertionError();
+
+        long[] sf = new long[V + 1];
+        for (int i = 0; i < A.length; i++) sf[A[i]] += f[i];
+        sf = supsetZeta(sf);                           // sf[d] = Σ_{d | A[i]} f[i]
+
+        // h[x] = Σ_{d | x} coeff[d} となる coeff。gcd(a,b) の約数 = 共通約数なので
+        // h[gcd(a,b)] = Σ_{d | a, d | b} coeff[d]
+        long[] coeff = moebius(Arrays.copyOf(h, V + 1));
+        for (int d = 1; d <= V; d++) coeff[d] *= sf[d];
+        coeff[0] = 0;
+        long[] w = zeta(coeff);                        // w[x] = Σ_{d | x} coeff[d] * sf[d]
+
+        long[] D = new long[B.length];
+        for (int j = 0; j < B.length; j++) D[j] = w[B[j]];
+        return D;
+    }
+    
+    /**
+     * D[j] = Σ_i f[i] * h[gcd(A[i], B[j])]   (j = 0..B.length-1)
+     * h.length >= V + 1 (V = max(A, B))。
+     * 計算量 O(V log V + N + M)
+     */
+    public static long[] gcdConvolutionTranspose(int[] A, int[] B, long[] f, long[] h, long mod) {
+        if (A.length != f.length) throw new AssertionError();
+        int V = 0;
+        for (int x : A) V = Math.max(V, x);
+        for (int x : B) V = Math.max(V, x);
+        if (h.length < V + 1) throw new AssertionError();
+
+        long[] sf = new long[V + 1];
+        for (int i = 0; i < A.length; i++) {
+            sf[A[i]] = (sf[A[i]] + (f[i] % mod + mod)) % mod;
+        }
+        sf = supsetZeta(sf, (x, y) -> (x + y) % mod);
+
+        long[] hh = new long[V + 1];
+        for (int i = 0; i <= V; i++) hh[i] = (h[i] % mod + mod) % mod;
+        long[] coeff = moebius(hh, mod);
+        for (int d = 1; d <= V; d++) coeff[d] = coeff[d] * sf[d] % mod;
+        coeff[0] = 0;
+        long[] w = zeta(coeff, (x, y) -> (x + y) % mod);
+
+        long[] D = new long[B.length];
+        for (int j = 0; j < B.length; j++) D[j] = w[B[j]];
+        return D;
+    }
+    
+    /**
+     * 約数 d ごとの集計を行うコールバック。
+     * {@link #gcdDistribution} が d = max(A), ..., 1 の降順に 1 回ずつ呼び出す。
+     */
+    @FunctionalInterface
+    public interface DivisorSum {
+        /**
+         * 全要素 i について A[i] が d の倍数となる T ∈ 𝒯 の w(T) の総和を返す。
+         *
+         * <p>A[i] が d の倍数となる添字 i 全体が、昇順に indices[l..r) に入っている。
+         * indices は共有配列なので変更しないこと。l == r の場合は 0 を返すこと。
+         */
+        long apply(int d, int[] indices, int l, int r);
+    }
+
+    /**
+     * C[k] = Σ_{T ∈ 𝒯, gcd(A[i] : i ∈ T) = k} w(T) を返す。
+     *
+     * <p>𝒯(空集合を含まない)と w は {@code sum} が定める。
+     *
+     * <p>返り値は長さ max(A) + 1 で C[0] = 0。A が空なら長さ 1 のゼロ配列。
+     *
+     * <p>呼び出し側は、全ての A[i] が 1 以上であること、および w の集計と
+     * 反転の中間計算で long がオーバーフローしないことを保証すること。
+     *
+     * <p>V = max(A)、D = Σ_i τ(A[i]) として、時間計算量は
+     * O(n√V + D + V log V + sum の合計)、追加領域は O(V + D)
+     * (sum 内部の使用領域を除く)。
+     *
+     * @throws NullPointerException     A または sum が null の場合
+     * @throws IllegalArgumentException A に 1 未満の要素がある場合
+     * @throws ArithmeticException      max(A) + 2 または D が int に収まらない場合
+     */
+    public static long[] gcdDistribution(int[] A, DivisorSum sum) {
+        Objects.requireNonNull(A, "A");
+        Objects.requireNonNull(sum, "sum");
+
+        int max = 0;
+        for (int a : A) {
+            if (a < 1) {
+                throw new IllegalArgumentException(
+                    "All elements of A must be positive."
+                );
+            }
+            max = Math.max(max, a);
+        }
+
+        if (A.length == 0) {
+            return new long[1];
+        }
+
+        // offset[d + 1] に、まず d の倍数である要素数を数える。
+        int[] offset = new int[Math.addExact(max, 2)];
+
+        for (int a : A) {
+            for (int d = 1; d <= a / d; d++) {
+                if (a % d != 0) {
+                    continue;
+                }
+
+                offset[d + 1]++;
+
+                int e = a / d;
+                if (e != d) {
+                    offset[e + 1]++;
+                }
+            }
+        }
+
+        // d 用の区間を [offset[d], offset[d + 1]) にする。
+        // 全区間の長さが int に収まらなければ例外。
+        for (int d = 1; d <= max; d++) {
+            offset[d + 1] += offset[d];
+        }
+
+        int[] list = new int[offset[max + 1]];
+        int[] cursor = Arrays.copyOf(offset, max + 1);
+
+        // i を昇順に追加するので、各区間内の添字も昇順になる。
+        for (int i = 0; i < A.length; i++) {
+            int a = A[i];
+
+            for (int d = 1; d <= a / d; d++) {
+                if (a % d != 0) {
+                    continue;
+                }
+
+                list[cursor[d]++] = i;
+
+                int e = a / d;
+                if (e != d) {
+                    list[cursor[e]++] = i;
+                }
+            }
+        }
+
+        long[] C = new long[max + 1];
+
+        // F(d) = Σ_{k: d | k} C[k] を降順に反転する。
+        for (int d = max; d >= 1; d--) {
+            long value = sum.apply(
+                d,
+                list,
+                offset[d],
+                offset[d + 1]
+            );
+
+            // long を使い、2 * d や m + d の int オーバーフローを防ぐ。
+            for (long m = 2L * d; m <= max; m += d) {
+                value -= C[(int) m];
+            }
+
+            C[d] = value;
+        }
+
+        return C;
+    }
+    
+    
+    public static long[] gcdDistributionMod(int[] A, DivisorSum sum, long mod) {
+        Objects.requireNonNull(A, "A");
+        Objects.requireNonNull(sum, "sum");
+        if (mod < 1) {
+            throw new IllegalArgumentException("mod must be positive.");
+        }
+
+        int max = 0;
+        for (int a : A) {
+            if (a < 1) {
+                throw new IllegalArgumentException(
+                    "All elements of A must be positive."
+                );
+            }
+            max = Math.max(max, a);
+        }
+
+        if (A.length == 0) {
+            return new long[1];
+        }
+
+        // offset[d + 1] に、まず d の倍数である要素数を数える。
+        int[] offset = new int[Math.addExact(max, 2)];
+
+        for (int a : A) {
+            for (int d = 1; d <= a / d; d++) {
+                if (a % d != 0) {
+                    continue;
+                }
+
+                offset[d + 1] = Math.incrementExact(offset[d + 1]);
+
+                int e = a / d;
+                if (e != d) {
+                    offset[e + 1] = Math.incrementExact(offset[e + 1]);
+                }
+            }
+        }
+
+        // d 用の区間を [offset[d], offset[d + 1]) にする。
+        for (int d = 1; d <= max; d++) {
+            offset[d + 1] = Math.addExact(
+                offset[d + 1],
+                offset[d]
+            );
+        }
+
+        int[] list = new int[offset[max + 1]];
+        int[] cursor = Arrays.copyOf(offset, max + 1);
+
+        // i を昇順に追加するので、各区間内の添字も昇順になる。
+        for (int i = 0; i < A.length; i++) {
+            int a = A[i];
+
+            for (int d = 1; d <= a / d; d++) {
+                if (a % d != 0) {
+                    continue;
+                }
+
+                list[cursor[d]++] = i;
+
+                int e = a / d;
+                if (e != d) {
+                    list[cursor[e]++] = i;
+                }
+            }
+        }
+
+        long[] C = new long[max + 1];
+
+        // F(d) = Σ_{k: d | k} C[k] (mod) を降順に反転する。
+        for (int d = max; d >= 1; d--) {
+            long value = Math.floorMod(
+                sum.apply(
+                    d,
+                    list,
+                    offset[d],
+                    offset[d + 1]
+                ),
+                mod
+            );
+
+            for (long m = 2L * d; m <= max; m += d) {
+                value -= C[(int) m];
+                if (value < 0) {
+                    value += mod;
+                }
+            }
+
+            C[d] = value;
+        }
+
+        return C;
+    }
+    
 
 	/**
 	 * 未テスト
@@ -1091,9 +1407,9 @@ public class DivisorLattice {
      * @param a
      * @param mod
      * @return
-     * verified:https://atcoder.jp/contests/abc428/submissions/70321995
      */
     public static long[] log(long[] a, long mod) {
+    	//https://atcoder.jp/contests/abc428/submissions/70321995
     	if (a[0] != 0) throw new AssertionError();
     	if (a[1] != 1) throw new AssertionError();
     	// F'=a'/a
@@ -1114,6 +1430,41 @@ public class DivisorLattice {
 			b[i] = b[i] * MathUtils.modInv(Sieve.omega(i), mod) % mod;
 		}
     	return b;
+    }
+    
+    /** Computes H[0..U) where H[n] = [n^{-s}] f(G)  (H[0] = 0).
+     G has length >= U, G[1] == 0 required (when U >= 2).
+    */
+    public static long[] compose(long[] f, long[] G, int U, long MOD) {
+    	if (U <= 1) return new long[Math.max(U, 0)];
+    	if (G[1] != 0) throw new IllegalArgumentException("G[1] must be 0");
+    	int V = U - 1;
+    	int L = 0;
+    	while ((2 << L) <= V) L++;
+		
+    	long[] h = new long[2];
+    	h[1] = L < f.length ? f[L] % MOD : 0;
+    	for (int i = L - 1; i >= 0; i--) {
+//    		ホーナー法で
+//    		f(G) = f₀+G(f₁+G(f₂+..))
+//    		として内側から計算。
+//    		Hᵢ = fᵢ+GH₊₁ 
+//    		と置くと [n⁻ˢ]Hᵢ は n ≤ ⌊V/2ⁱ⌋ しか必要ない
+    		int N = V >> i;               
+		 	long[] nh = new long[N + 1];//Hᵢ 
+			int M = h.length - 1;                       
+			for (int d = 2; d <= N; d++) {//GH₊₁
+		        long g = G[d];
+		        if (g == 0) continue;
+		        int lim = Math.min(N / d, M);
+		        for (int e = 1, n = d; e <= lim; e++, n += d)
+		            nh[n] = (nh[n] + g * h[e]) % MOD;
+		    }
+			//fᵢを足す
+		    nh[1] = (nh[1] + (i < f.length ? f[i] % MOD : 0)) % MOD;
+		    h = nh;
+    	}
+		return Arrays.copyOf(h, U);
     }
     
     /**

@@ -17,6 +17,7 @@ import java.util.Set;
 import library.tools.FastScanner;
 import library.util.ArrayUtils;
 import library.util.Ints;
+import library.util.collections.IntLinkedListArray;
 import library.util.collections.MyPriorityQueue;
 
 
@@ -120,6 +121,107 @@ public class LongValueDigraph {
 					dist[e.dst]=nd;
 					parent[e.dst]=v;
 					pq.add(new long[] {nd, e.dst});
+				}
+			}
+		}
+		return new DijkstraResult(dist, parent);
+	}
+
+	/**
+	 * 単一始点最短経路問題を Dial のアルゴリズムにより解く。
+	 * 有向グラフ G = (V, E)、辺重み w: E -> [0, W] に対し、始点 src から各頂点 v ∈ V への最短距離 d(src, v) および最短路木における親頂点を求める。
+	 * 到達不能な頂点 v への距離は Long.MAX_VALUE、最短路木における親は -1。
+	 * 事前条件: 0 <= src < N。全ての e ∈ E について 0 <= e.cost <= 10^7。
+	 * 計算量: 時間 O(N + M + D)、追加空間 O(N + W) (ただし W = max_{e ∈ E} e.cost、D = max_{v ∈ V, dist[v] < ∞} dist[v])。
+	 * 未テスト
+	 * @param src 始点
+	 * @return 各頂点への最短距離と最短路木における親頂点を格納した DijkstraResult
+	 */
+	// 未テスト
+	public DijkstraResult dial(int src) {
+		if (src < 0 || src >= N) {
+			throw new IllegalArgumentException("src out of range: " + src);
+		}
+		long maxCost = 0;
+		for (int i = 0; i < N; i++) {
+			for (Edge e : adj[i]) {
+				if (e.cost < 0) {
+					throw new AssertionError("負の辺が存在");
+				}
+				if (e.cost > maxCost) {
+					maxCost = e.cost;
+				}
+			}
+		}
+		if (maxCost > 10_000_000) {
+			throw new IllegalArgumentException("Max edge cost is too large for Dial's algorithm: " + maxCost);
+		}
+		return dial(src, (int) maxCost);
+	}
+
+	/**
+	 * 辺重みの上界 maxWeight が与えられた下で、単一始点最短経路問題を Dial のアルゴリズムにより解く。
+	 * 有向グラフ G = (V, E)、辺重み w: E -> [0, maxWeight] に対し、始点 src から各頂点 v ∈ V への最短距離 d(src, v) および最短路木における親頂点を求める。
+	 * 到達不能な頂点 v への距離は Long.MAX_VALUE、最短路木における親は -1。
+	 * 事前条件: 0 <= src < N, 0 <= maxWeight <= 10^7。到達可能な全ての e ∈ E について 0 <= e.cost <= maxWeight。
+	 * 計算量: 時間 O(N + M + D)、追加空間 O(N + maxWeight) (ただし D = max_{v ∈ V, dist[v] < ∞} dist[v])。
+	 * 未テスト
+	 * @param src 始点
+	 * @param maxWeight 辺重みの非負の上界 (0 <= maxWeight <= 10^7)
+	 * @return 各頂点への最短距離と最短路木における親頂点を格納した DijkstraResult
+	 */
+	// 未テスト
+	public DijkstraResult dial(int src, int maxWeight) {
+		if (src < 0 || src >= N) {
+			throw new IllegalArgumentException("src out of range: " + src);
+		}
+		if (maxWeight < 0) {
+			throw new IllegalArgumentException("maxWeight must be non-negative: " + maxWeight);
+		}
+		if (maxWeight > 10_000_000) {
+			throw new IllegalArgumentException("maxWeight is too large for Dial's algorithm: " + maxWeight);
+		}
+		long[] dist = new long[N];
+		Arrays.fill(dist, Long.MAX_VALUE);
+		int[] parent = new int[N];
+		Arrays.fill(parent, -1);
+		dist[src] = 0;
+
+		int B = maxWeight + 1;
+		IntLinkedListArray list = new IntLinkedListArray(N + B);
+		list.insertSingleAfter(N, src);
+		int remaining = 1;
+		long d = 0;
+
+		while (remaining > 0) {
+			int b = (int) (d % B);
+			while (list.next(N + b) == -1) {
+				d++;
+				b = (int) (d % B);
+			}
+			int u = list.next(N + b);
+			list.spliceOut(u);
+			remaining--;
+
+			for (Edge e : adj[u]) {
+				if (e.cost < 0) {
+					throw new AssertionError("負の辺が存在");
+				}
+				if (e.cost > maxWeight) {
+					throw new IllegalArgumentException("Edge cost " + e.cost + " exceeds maxWeight " + maxWeight);
+				}
+				if (e.cost > Long.MAX_VALUE - d) continue;
+				long nd = d + e.cost;
+				if (nd < dist[e.dst]) {
+					if (dist[e.dst] != Long.MAX_VALUE) {
+						list.spliceOut(e.dst);
+					} else {
+						remaining++;
+					}
+					dist[e.dst] = nd;
+					parent[e.dst] = u;
+					int bNew = (int) (nd % B);
+					list.insertSingleAfter(N + bNew, e.dst);
 				}
 			}
 		}

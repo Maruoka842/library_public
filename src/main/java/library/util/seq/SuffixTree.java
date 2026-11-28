@@ -1,6 +1,7 @@
 package library.util.seq;
 
 import java.util.Arrays;
+import java.util.function.LongBinaryOperator;
 
 import library.util.collections.IntQueue;
 /**
@@ -12,12 +13,15 @@ public class SuffixTree {
 	char[] S;
 	int[] sa;
 	int[] lcp;
-	public int[] rangeLCP;//根からそのノードまでの辺重み（文字列長）の和
+	/**根からそのノードまでの辺重み（文字列長）の和*/
+	public int[] rangeLCP;
 	public int[] startPos;//その頂点が表す部分文字列を prefix に持つ suffix のうち、suffix array 上で最初に現れるものの開始位置。S[startPos[v]:startPos[v]+rangeLCP[v])が頂点vの表すLCP
+	/** suffixCount[v] = 頂点 v の部分木に属するサフィックスの個数 */
 	public int[] suffixCount;
 	public int[] firstChild;
 	public int[] nextSibling;
-	public int[] parent;
+	public int[] parent;//parent[root]=-1
+	
 	public int N;
 	
 	int size;
@@ -30,6 +34,7 @@ public class SuffixTree {
 		N = size;
         buildChildren();
 		buildSuffixCount();
+		buildSuffixNode();
 	}
 	
 	//https://stackoverflow.com/questions/57502012/how-to-construct-suffix-tree-from-lcp-array-and-suffix-array
@@ -268,7 +273,71 @@ public class SuffixTree {
 		for (int v = 1; v < N; v++) ans += parentEdgeLength(v);
 		return ans;
 	}
+	
+	
+	/**
+	 * S のすべての部分文字列を、重複を含めて辞書順に列挙したときの指定順位の部分文字列を取得する。
+	 * 順位は 0-indexed とする。
+	 * ks は非減少順にソートされている必要がある。
+	 * 未テスト
+	 *
+	 * @param ks 取得する順位の配列
+	 * @return 各順位に対応する部分文字列を (開始位置 << 32) | 長さ の形式で格納した配列
+	 * @throws IllegalArgumentException ks が非減少順でない場合、負の順位を含む場合、
+	 *         または部分文字列の総数以上の順位を含む場合
+	 * 計算量: O(N + Q)
+	 */
+	public long[] iterateSubstrings(long[] ks) {
+		int Q = ks.length;
+		long total = (long) S.length * (S.length + 1) / 2;
+		for (int i = 0; i < Q; i++) {
+			if (ks[i] < 0 || ks[i] >= total) {
+				throw new IllegalArgumentException("Invalid k: " + ks[i]);
+			}
+			if (i > 0 && ks[i - 1] > ks[i]) {
+				throw new IllegalArgumentException("ks must be sorted in non-decreasing order");
+			}
+		}
 
+		long[] res = new long[Q];
+		// it[v] は、頂点 v の次に訪問する子を指す。
+		// 子を順番にたどるため、DFS の状態を明示的にスタックで管理する。
+		int[] it = firstChild.clone();
+		int[] st = new int[N];
+		int sp = 0;
+		st[sp++] = 0;
+		int v = 0;
+		long base = 0, w = 0;
+
+		for (int qi = 0; qi < Q; qi++) {
+			long k = ks[qi];
+			// base: 現在の頂点 v に対応する区間の開始順位
+			// w:    現在の頂点 v に対応する部分文字列の個数
+			while (v != -1 && base + w <= k) {
+				base += w;
+				int nv = -1;
+				while (sp > 0) {
+					int t = st[sp - 1], u = it[t];
+					if (u == -1) sp--;
+					else {
+						it[t] = nextSibling[u];
+						st[sp++] = u;
+						nv = u;
+						break;
+					}
+				}
+				v = nv;
+				if (v != -1) {
+					w = (long) (rangeLCP[v] - rangeLCP[parent[v]]) * suffixCount[v];
+				}
+			}
+			long un = suffixCount[v];
+			int len = rangeLCP[parent[v]] + 1 + (int) ((k - base) / un);
+			res[qi] = ((long) startPos[v] << 32) | len;
+		}
+		return res;
+	}	
+	
 	/**
 	 * n(n+1)/2個の部分文字列のうち、0-indexedでk番目に辞書順に小さい部分文字列を返す。
 	 * @return
@@ -280,12 +349,20 @@ public class SuffixTree {
 		return ans[0];
 	}
 	
-	
+	/**
+	 * 返り値について、
+	 * -1：答えを発見した。答えは ans[0] に格納されている。
+	 * 0以上：頂点 v の部分木を探索しても答えが見つからなかった場合の、残りの順位 k。
+	 * @param v
+	 * @param k
+	 * @param ans
+	 * @return
+	 */
 	long dfs(int v, long k, String[] ans) {
 		for (int dst=firstChild[v];dst!=-1;dst=nextSibling[dst]) {
 			int cost=rangeLCP[dst] - rangeLCP[parent[dst]];
 			if(1L * cost * suffixCount[dst] > k) {
-				int q = 1 + (int)(k / suffixCount[dst]);
+				int q = 1 + (int)(k / suffixCount[dst]);//何文字伸ばした位置か
 				ans[0] = String.valueOf(Arrays.copyOfRange(S, startPos[dst], startPos[dst] + rangeLCP[v] + q));
 				return -1;
 			} else {
@@ -330,6 +407,83 @@ public class SuffixTree {
 			}
 		}
 		return res.toString();
+	}
+	
+	/** 上位32bit=辿り着いた頂点(辺の下端), 下位32bit=一致長。一致長==T.length なら部分文字列 */
+	public long get(char[] T) {
+	    int v = 0, L = 0;
+	    while (L < T.length) {
+	        int next = -1;
+	        for (int u = firstChild[v]; u != -1; u = nextSibling[u])
+	            if (S[startPos[u] + L] == T[L]) { next = u; break; } // L==depth[v] なので範囲内
+	        if (next == -1) break;
+
+	        // 辺の上を1文字ずつ比較する
+			// すでに L 文字（= rangeLCP[v]）一致しているので、L から続きを比べる。
+			// 比べる上限は「T の末尾」か「辺の下端（next の深さ）」の小さい方。
+	        int lim = Math.min(T.length, rangeLCP[next]);
+	        while (L < lim && S[startPos[next] + L] == T[L]) L++;
+	        v = next;
+			// 辺を最後まで進めなかった（Tが辺の途中で終わった、または食い違った）なら終了。
+			// 最後まで進めたなら L == rangeLCP[next] で、次の頂点の子を探すループへ。
+	        if (L < rangeLCP[next]) break;
+	    }
+	    return ((long) v << 32) | L;
+	}
+	
+	/** v の子を辞書順に列挙する。for (int u : children(v)) { ... } */
+	public Iterable<Integer> children(int v) {
+		return () -> new java.util.PrimitiveIterator.OfInt() {
+			int cur = firstChild[v];
+			@Override public boolean hasNext() { return cur != -1; }
+			@Override public int nextInt() {
+				int r = cur;
+				cur = nextSibling[cur];
+				return r;
+			}
+		};
+	}
+	
+	private int[] suffixNode; // suffixNode[i] = S[i:) に対応する頂点。suffixNode[S.length] = 0（根＝空文字列）
+
+	void buildSuffixNode() {
+	    suffixNode = new int[S.length + 1];
+	    Arrays.fill(suffixNode, -1);
+	    suffixNode[S.length] = 0;
+	    for (int v = 1; v < N; v++) {
+	        if (isSuffix(v)) suffixNode[startPos[v]] = v;
+	    }
+	}
+
+	/**
+	 * S[i:|S|) に対応する頂点を返す。i == |S| のときは根（空文字列）。
+	 * 計算量: O(1)（前計算 O(N)）
+	 */
+	public int nodeOfSuffix(int i) {
+	    return suffixNode[i];
+	}
+	
+	public long[] subtreeSum(long[] a, LongBinaryOperator op) {
+		assert a.length == N;
+		long[] res = a.clone();
+		int[] order = bfsOrder();
+		for (int i = N - 1; i >= 1; i--) {   // BFS の逆順: 子孫は先に確定している
+			int v = order[i];
+			int p = parent[v];
+			res[p] = op.applyAsLong(res[p], res[v]);
+		}
+		return res;
+	}
+
+	public long[] ancestorSum(long[] a, LongBinaryOperator op) {
+		assert a.length == N;
+		long[] res = a.clone();
+		int[] order = bfsOrder();
+		for (int i = 1; i < N; i++) {        // BFS の正順: 親は先に確定している
+			int v = order[i];
+			res[v] = op.applyAsLong(res[parent[v]], a[v]);
+		}
+		return res;
 	}
 
 	/**

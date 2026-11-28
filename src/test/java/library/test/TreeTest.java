@@ -318,7 +318,7 @@ public class TreeTest {
 	@Test
 	public void testDiameter_SingleNode() {
 		Tree t = new Tree(1);
-		Tree.DiameterResult res = t.diameter();
+		Tree.DiameterResult res = t.diameterInfo();
 		assertEquals(0, res.length());
 		assertEquals(0, res.u());
 		assertEquals(0, res.v());
@@ -329,7 +329,7 @@ public class TreeTest {
 	public void testDiameter_TwoNodes() {
 		Tree t = new Tree(2);
 		t.addEdge(0, 1);
-		Tree.DiameterResult res = t.diameter();
+		Tree.DiameterResult res = t.diameterInfo();
 		assertEquals(1, res.length());
 		assertTrue((res.u() == 0 && res.v() == 1) || (res.u() == 1 && res.v() == 0));
 		assertArrayEquals(new int[] { 0, 1 }, res.centers());
@@ -339,7 +339,7 @@ public class TreeTest {
 	public void testDiameter_PathOddLength() {
 		// 0 - 1 - 2 - 3 (length 3, 4 nodes)
 		Tree t = Tree.path(4);
-		Tree.DiameterResult res = t.diameter();
+		Tree.DiameterResult res = t.diameterInfo();
 		assertEquals(3, res.length());
 		assertTrue((res.u() == 0 && res.v() == 3) || (res.u() == 3 && res.v() == 0));
 		assertArrayEquals(new int[] { 1, 2 }, res.centers());
@@ -349,7 +349,7 @@ public class TreeTest {
 	public void testDiameter_PathEvenLength() {
 		// 0 - 1 - 2 - 3 - 4 (length 4, 5 nodes)
 		Tree t = Tree.path(5);
-		Tree.DiameterResult res = t.diameter();
+		Tree.DiameterResult res = t.diameterInfo();
 		assertEquals(4, res.length());
 		assertTrue((res.u() == 0 && res.v() == 4) || (res.u() == 4 && res.v() == 0));
 		assertArrayEquals(new int[] { 2 }, res.centers());
@@ -359,7 +359,7 @@ public class TreeTest {
 	public void testDiameter_StarGraph() {
 		// 0 is center, 1, 2, 3, 4 are leaves
 		Tree t = Tree.star(5);
-		Tree.DiameterResult res = t.diameter();
+		Tree.DiameterResult res = t.diameterInfo();
 		assertEquals(2, res.length());
 		assertTrue(res.u() != 0 && res.v() != 0 && res.u() != res.v());
 		assertArrayEquals(new int[] { 0 }, res.centers());
@@ -368,7 +368,7 @@ public class TreeTest {
 	@Test
 	public void testDiameter_EmptyThrows() {
 		Tree t = new Tree(0);
-		assertThrows(IllegalArgumentException.class, () -> t.diameter());
+		assertThrows(IllegalArgumentException.class, () -> t.diameterInfo());
 	}
 
 	@Test
@@ -377,7 +377,7 @@ public class TreeTest {
 		for (int t_case = 0; t_case < 100; t_case++) {
 			int N = rnd.nextInt(50) + 1;
 			Tree t = Tree.randomTree(N);
-			Tree.DiameterResult res = t.diameter();
+			Tree.DiameterResult res = t.diameterInfo();
 
 			// Naive computation of all-pairs shortest paths
 			int[][] dist = new int[N][N];

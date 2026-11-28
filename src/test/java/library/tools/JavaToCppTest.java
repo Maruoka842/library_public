@@ -11,11 +11,35 @@ import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
+import library.tools.MergeFiles;
+
 /** {@link JavaToCpp} の回帰テスト。 */
 public class JavaToCppTest {
     /** テスト用ディレクトリ。 */
     @TempDir
     Path tempDir;
+
+    /**
+     * 現行 Main を MergeFiles で統合して export した C++17 がコンパイルできることを検証する。
+     * 計算量: O(S + C)。S はソース量、C は変換および C++ コンパイル時間。
+     *
+     * @throws Exception 変換またはコンパイルに失敗した場合
+     */
+    @Test
+    // 未テスト
+    void exportsAndCompilesCurrentMain(@TempDir Path tempDir) throws Exception {
+        Path mergedJava = tempDir.resolve("Main.java");
+        Path cppFile = tempDir.resolve("main.cpp");
+        MergeFiles.export("Main", "src/main/java/Main.java", mergedJava.toString());
+        JavaToCpp.export(mergedJava, cppFile);
+
+        Process compileProc = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(),
+                "-o", tempDir.resolve("Main").toString())
+                .redirectErrorStream(true)
+                .start();
+        String compileOutput = new String(compileProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, compileProc.waitFor(), "g++ compilation failed:\n" + compileOutput);
+    }
 
     /**
      * MergeFiles 形式のクラス、配列、ループ、入出力、文字列連結が C++17 表記へ変換されることを検証する。
@@ -3938,6 +3962,38 @@ public class JavaToCppTest {
         int runExitCode = runProc.waitFor();
         assertEquals(0, runExitCode, "Execution failed:\n" + runOutput);
         assertEquals("4", runOutput.trim());
+    }
+
+    /**
+     * Comparator の空引数初期化が C++17 でコンパイル可能な型名へ変換されることを検証する。
+     * 計算量: O(L)（L は入力 Java ソース長）。
+     *
+     * @throws Exception 変換または C++ コンパイルに失敗した場合
+     */
+    @Test
+    // 未テスト
+    void exportsComparatorConstructionAsCompilableCpp(@TempDir Path tempDir) throws Exception {
+        Path java = tempDir.resolve("Main.java");
+        Files.writeString(java, """
+                import java.util.Comparator;
+                public class Main {
+                    public static void main(String[] args) {
+                        Comparator<Integer> comparator = new Comparator<>();
+                        System.out.println(comparator.compare(1, 2));
+                    }
+                }
+                """, StandardCharsets.UTF_8);
+        Path cppFile = tempDir.resolve("main.cpp");
+        JavaToCpp.export(java, cppFile);
+
+        String cpp = Files.readString(cppFile, StandardCharsets.UTF_8);
+        assertTrue(cpp.contains("function<int(int, int)> comparator = (function<int(int, int)>{});"));
+        Process compileProc = new ProcessBuilder("g++", "-std=c++17", "-O2", cppFile.toString(),
+                "-o", tempDir.resolve("MainComparatorTest").toString())
+                .redirectErrorStream(true)
+                .start();
+        String compileOutput = new String(compileProc.getInputStream().readAllBytes(), StandardCharsets.UTF_8);
+        assertEquals(0, compileProc.waitFor(), "g++ compilation failed:\n" + compileOutput);
     }
 
     /**

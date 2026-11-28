@@ -3,6 +3,8 @@ package library.util.seq;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+
+import library.util.ArrayUtils;
 import library.util.IntComparator;
 
 /**
@@ -44,7 +46,18 @@ public class CartesianTree {
     private int[] postOrder;
     /** 各ノードが表す区間のキャッシュ */
     private int[][] intervals;
-
+    
+    public static class Mapped {
+        public final CartesianTree tree;
+        public final int[] ord;      // ord[j] = 頂点 j に対応する元の添字
+        Mapped(CartesianTree tree, int[] ord) { this.tree = tree; this.ord = ord; }
+    }
+    public static Mapped ofPoints(int[] xs, int[] ys, boolean isMinHeap) {
+        int[] ord = ArrayUtils.argSort(xs);
+        return new Mapped(new CartesianTree(ArrayUtils.take(ys, ord), isMinHeap), ord);
+    }
+    
+    
     /**
      * <p>
      * 与えられた比較器に基づいてデカルト木を構築する。
@@ -171,7 +184,7 @@ public class CartesianTree {
 
     /**
      * <p>
-     * 行き順巡回（Pre-order Traversal）を行ったときのノード of indices を返す。
+     * 行き順巡回（Pre-order Traversal）を行ったときのノードの indices を返す。
      * </p>
      * <ul>
      *   <li>計算量: O(N)</li>
@@ -199,12 +212,7 @@ public class CartesianTree {
 
     /**
      * <p>
-     * 通り順巡回（In-order Traversal）を行ったときのノード of indices を返す。
-     * デカルト木の定義により、常に <code>[0, 1, ..., N-1]</code> となる。
-     * </p>
-     * <ul>
-     *   <li>計算量: O(N)</li>
-     * </ul>
+     * 通り順巡回（In-order Traversal）を行ったときのノード の indices を返す。
      * @return 通り順巡回順のインデックス配列
      */
     // 未テスト

@@ -42,6 +42,38 @@ public class Grid2D {
 			return i*W+j;
 		}
 	}
+	/**
+	 * 方向 {@code dir} を {@code type} に応じて反転した方向を返す。
+	 * type = 0 : 何もしない
+	 * type = 1 : / で反射
+	 * type = 2 : \ で反射
+	 */
+    public static int mirror(int dir, int type) {
+        if (type == 0) {
+            return dir;
+        }
+        if (type == 1) {
+            return 3 - dir;
+        }
+        if (type == 2) {
+            return dir ^ 1;
+        }
+        throw new java.lang.AssertionError();
+    }
+    
+    public static int getMirrorType(int curDir, int nxtDir) {
+        if (curDir == nxtDir) {
+            return 0;
+        }
+        if (curDir == (3 - nxtDir)) {
+            return 1;
+        }
+        if (curDir == (nxtDir ^ 1)) {
+            return 2;
+        }
+        throw new java.lang.AssertionError();
+    }
+
 	
 	Grid2DVertex vertexArray[]; 
 	/** (0, 0)を左上、(1, 1)を右下として反時計回り。一つ目が(1, 0)。DRUL*/

@@ -5,6 +5,19 @@ public class MaxSeg extends SegTreelong {
 	public MaxSeg(int n) {
 		super(n, Long::max, Long.MIN_VALUE/3);
 	}
+
+	/**
+	 * [l, r) 内で最大値をとる最小の添字 i を返す。l < r を満たすこと。
+	 * 計算量: O(log n)
+	 * 未テスト
+	 * @param l 区間の始端
+	 * @param r 区間の終端
+	 * @return argmax{i | l <= i < r}
+	 */
+	public int argMax(int l, int r) {
+		long max = fold(l, r);
+		return maximalRight(l, x -> x < max);
+	}
 	
 	/**
 	 * from ≤ i かつ a[i] ≥ v を満たす最小の i を返す。存在しないときは a.length を返す。

@@ -3,10 +3,10 @@ package library.util;
 import java.math.BigInteger;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.PriorityQueue;
 import java.util.Random;
 import java.util.TreeMap;
 import java.util.function.DoubleUnaryOperator;
@@ -14,7 +14,6 @@ import java.util.function.LongToDoubleFunction;
 import java.util.function.LongUnaryOperator;
 import java.util.function.Predicate;
 
-import library.util.MathUtils.Result;
 import library.util.algebra.instance.impl.GaussInt;
 import library.util.collections.IntArrayList;
 import library.util.collections.IntDeque;
@@ -468,7 +467,60 @@ public class MathUtils {
 
 	/** 高度合成数の探索に使用する素数のリスト */
 	private static final long[] SMALL_PRIMES = { 2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 43, 47, 53 };
+	
+	/**
+	 * @param n    探索範囲の上限（n 以下の正整数が対象）
+	 * @param k    保持する上位件数
+	 * @param heap 先頭が最悪要素（約数個数が少なく、同数なら数値が大きい）となる最小ヒープ。
+	 *             要素は {@code {約数個数, 数値}}。結果はここに蓄積される。
+	 * @param idx  次に使える最小の素数の {@code SMALL_PRIMES} 上の添字
+	 * @param num  ここまでに選んだ素因数の積
+	 * @param d    {@code num} の約数の個数
+	 */
+	private static void dfs(long n, int k, PriorityQueue<long[]> heap, int idx, long num, long d) {
+		offer(k, heap, num, d);
+		for (int i = idx; i < SMALL_PRIMES.length; i++) {
+			long p = SMALL_PRIMES[i];
+			if (num > n / p) break;
+			if (heap.size() == k) {
+				// 以降の素因数は全て p 以上 → 追加できる素因数の総数 m ≤ floor(log_p(n/num))
+				int m = 0;
+				for (long r = n / num; r >= p; r /= p) m++;
+				// 約数個数の倍率は高々 2^m。d * 2^m < 最悪値 をオーバーフローなしで判定
+				long w = heap.peek()[0];
+				if (d <= (w - 1) / (1L << m)) break; // d * 2^m < w
+			}
+			long x = num;
+			for (int e = 1; x <= n / p; e++) {
+				x *= p;
+				dfs(n, k, heap, i + 1, x, d * (e + 1));
+			}
+		}
+	}
+	
+	private static void offer(int k, PriorityQueue<long[]> heap, long num, long d) {
+		if (heap.size() < k) {
+			heap.add(new long[] { d, num });
+			return;
+		}
+		long[] w = heap.peek();
+		if (d > w[0] || (d == w[0] && num < w[1])) {
+			heap.poll();
+			heap.add(new long[] { d, num });
+		}
+	}
 
+	/** n 以下で約数の個数が多い順に上位 k 個。{約数個数, 数値} の配列を返す。 */
+	public static long[][] topKByDivisorCount(long n, int k) {
+		// 先頭が「最悪の要素」（約数個数が少ない、同数なら数値が大きい）になる最小ヒープ
+		PriorityQueue<long[]> heap = new PriorityQueue<>(
+				(a, b) -> a[0] != b[0] ? Long.compare(a[0], b[0]) : Long.compare(b[1], a[1]));
+		dfs(n, k, heap, 0, 1, 1);
+		long[][] r = heap.toArray(new long[0][]);
+		Arrays.sort(r, (a, b) -> a[0] != b[0] ? Long.compare(b[0], a[0]) : Long.compare(a[1], b[1]));
+		return r;
+	}
+	
 	/**
 	 * N 以下の正整数のうち、約数の個数が最大であるものを返す。
 	 * 複数存在する場合は、そのうち最小のものを返す。
@@ -483,7 +535,7 @@ public class MathUtils {
 	 * @return 約数の個数が最大の N 以下の整数
 	 */
 	public static long highlyCompositeNumber(long n) {
-		if (n <= 0) return 0;
+		if (n <= 0) throw new AssertionError();
 		long[] res = { 1, 1 }; // {num, divisors}
 		dfsHighlyComposite(n, 0, 1, 1, 62, res);
 		return res[0];

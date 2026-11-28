@@ -6,7 +6,15 @@ public class MinSeg extends SegTreelong {
 		super(n, Long::min, Long.MAX_VALUE/3);
 	}
 	
-	public int argmin(int l, int r) {
+	/**
+	 * [l, r) 内で最小値をとる最小の添字 i を返す。l < r を満たすこと。
+	 * 計算量: O(log n)
+	 * 未テスト
+	 * @param l 区間の始端
+	 * @param r 区間の終端
+	 * @return argmin{i | l <= i < r}
+	 */
+	public int argMin(int l, int r) {
 		//https://atcoder.jp/contests/abc404/submissions/75005027
 		long min=fold(l, r);
 		int arg=maximalRight(l, v -> v > min);

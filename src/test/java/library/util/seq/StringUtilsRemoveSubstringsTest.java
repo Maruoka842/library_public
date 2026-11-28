@@ -36,4 +36,22 @@ public class StringUtilsRemoveSubstringsTest {
         assertArrayEquals(new String[]{"abcd", "efgh"}, StringUtils.removeSubstrings(new String[]{"abc", "abcd", "efg", "efgh"}));
         assertArrayEquals(new String[]{"efgh", "abcd"}, StringUtils.removeSubstrings(new String[]{"efgh", "efg", "abcd", "abc"}));
     }
+
+    @Test
+    public void testRemoveSuperStrings() {
+        assertArrayEquals(new String[]{"abcd"}, StringUtils.removeSuperStrings(new String[]{"abc", "bc", "abcd"}));
+        assertArrayEquals(new String[]{"a", "b", "c"}, StringUtils.removeSuperStrings(new String[]{"a", "b", "c"}));
+        assertArrayEquals(new String[]{"ab"}, StringUtils.removeSuperStrings(new String[]{"ab", "ab"}));
+        assertArrayEquals(new String[]{"abc"}, StringUtils.removeSuperStrings(new String[]{"abc", "ab", "bc", "b"}));
+        assertArrayEquals(new String[]{"abcabc"}, StringUtils.removeSuperStrings(new String[]{"abcabc", "abc"}));
+        assertArrayEquals(new String[]{"abc", "def"}, StringUtils.removeSuperStrings(new String[]{"abc", "def"}));
+        assertArrayEquals(new String[]{"banana"}, StringUtils.removeSuperStrings(new String[]{"banana", "ana", "nan"}));
+    }
+
+    @Test
+    public void testRemoveSuperStringsEmptyAndUtf16() {
+        assertArrayEquals(new String[]{""}, StringUtils.removeSuperStrings(new String[]{"a", "", ""}));
+        assertArrayEquals(new String[]{"😀x"}, StringUtils.removeSuperStrings(new String[]{"😀x", "\uDE00", "x"}));
+        assertArrayEquals(new String[]{"b", "a"}, StringUtils.removeSuperStrings(new String[]{"b", "a"}));
+    }
 }

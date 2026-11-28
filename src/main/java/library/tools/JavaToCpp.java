@@ -163,6 +163,8 @@ public final class JavaToCpp {
         private final List<CtMethod<?>> deferredMethods = new java.util.ArrayList<>();
         /** 全型定義後に本体を出力するコンストラクタ。 */
         private final List<CtConstructor<?>> deferredConstructors = new java.util.ArrayList<>();
+        /** 追加の転送コンストラクタを生成済みの型。 */
+        private final Set<String> constructorBridgeTypes = new HashSet<>();
         /** 現在本体を出力している型。 */
         private CtType<?> currentType;
         /** 現在出力中の無名関数メソッド。 */
@@ -939,7 +941,8 @@ public final class JavaToCpp {
                 }
                 ts.append("}\n");
                 line(ts.toString());
-            } else if (constructor.getParameters().stream().anyMatch(p -> type(p.getType()).startsWith("function<"))) {
+            } else if (constructor.getParameters().stream().anyMatch(p -> type(p.getType()).startsWith("function<"))
+                    && constructorBridgeTypes.add(owner.getQualifiedName())) {
                 StringBuilder ts = new StringBuilder();
                 ts.append("template<");
                 for (int i = 0; i < constructor.getParameters().size(); i++) {
@@ -2940,6 +2943,15 @@ public final class JavaToCpp {
         private String constructor(CtConstructorCall<?> c) {
             String q = c.getType().getQualifiedName();
             String simple = simpleName(c.getType().getSimpleName());
+            if (q.equals("java.util.Comparator") && c.getArguments().isEmpty()) {
+                CtTypeReference<?> comparatorType = c.getType();
+                if (comparatorType.getActualTypeArguments().isEmpty()) {
+                    CtTypeReference<?> expectedType = getExpectedType(c);
+                    if (expectedType != null) comparatorType = expectedType;
+                }
+                String comparator = type(comparatorType);
+                return "(" + comparator + "{})";
+            }
             if (c instanceof CtNewClass<?> anonymous) {
                 if (q.equals("java.util.Comparator") || functionalType(c.getType()) != null || q.startsWith("java.util.function.")) {
                     return anonymousFunctional(anonymous);

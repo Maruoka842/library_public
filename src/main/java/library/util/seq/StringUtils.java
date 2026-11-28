@@ -1155,4 +1155,70 @@ public class StringUtils {
 
         return result.toArray(new String[0]);
     }
+
+    /**
+     * S' = {s_i | ∄j: (|s_j|, j) < (|s_i|, i) ∧ s_j が s_i の 部分文字列}。
+     * 同一文字列は最小の入力インデックスだけを残し、結果は入力順とする。
+     * 空文字列が含まれる場合は最初の空文字列だけを返す。
+     * 計算量: O(N) 時間・空間（N = Σ |s_i|）。
+     * 未テスト。
+     *
+     * @param input 入力文字列列
+     * @return 上記条件を満たす文字列列
+     */
+    public static String[] removeSuperStrings(String[] input) {
+    	//https://atcoder.jp/contests/abc268/submissions/81047134
+        int n = 0;
+        for (String s : input) n += s.length();
+        int[] text = new int[n];        // 連結文字列（文字をそのまま使う）
+        int[] owner = new int[n];       // 各位置が属する入力文字列
+        boolean[] isStart = new boolean[n];
+        int[] ends = new int[input.length]; // 各文字列の終端（連結文字列上の排他的な位置）
+        int[] lengths = new int[input.length];
+        int p = 0;
+        for (int i = 0; i < input.length; i++) {
+            lengths[i] = input[i].length();
+            for (int j = 0; j < lengths[i]; j++) {
+                text[p] = input[i].charAt(j);
+                owner[p] = i;
+                isStart[p] = j == 0;
+                p++;
+            }
+            ends[i] = p;
+        }
+
+        int[] sa = suffixArray(text);
+        int[] lcp = lcpArray(text, sa);
+
+        boolean[] removed = new boolean[input.length];
+        for (int direction = 0; direction < 2; direction++) {
+            int best = -1;
+            for (int step = 0; step < n; step++) {
+                int t = direction == 0 ? step : n - 1 - step;
+                if (step > 0) {
+                    int h = direction == 0 ? lcp[t - 1] : lcp[t];//「直前に見た接尾辞」と「現在の接尾辞」の LCP（共通接頭辞の長さ）
+                    if (best >= 0 && lengths[best] > h) best = -1;
+                }
+                int pos = sa[t];// 現在の接尾辞の、連結文字列上の開始位置
+                int i = owner[pos];// pos が属する入力文字列
+
+                if (isStart[pos]) {
+                    if (best < 0 || lengths[i] < lengths[best] || (lengths[i] == lengths[best] && i < best)) 
+                    	best = i;
+                }
+
+                // best の先頭 |best| 文字が pos から一致している。
+                // ただし連結しただけなので、一致が文字列 i の終端を越えていないこと
+                // （|best| <= 残り長）を確認する。best は有効候補中で最短なので、
+                // これを満たさなければ他の候補も満たさない。
+                int rem = ends[i] - pos;
+                //S[pos:ends[i]) が input[best] を接頭辞に持つか
+                if (best >= 0 && lengths[best] <= rem && (lengths[best] < lengths[i] || (lengths[best] == lengths[i] && best < i))) 
+                	removed[i] = true;
+            }
+        }
+        List<String> result = new ArrayList<>();
+        for (int i = 0; i < input.length; i++) if (!removed[i]) result.add(input[i]);
+        return result.toArray(new String[0]);
+    }
 }

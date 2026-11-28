@@ -20,7 +20,7 @@ public class StoerWagnerTest {
         // Cut (1,0), (1,2) -> 2 + 3 = 5
         // Cut (2,1), (2,3) -> 3 + 4 = 7
         // Cut (3,2), (3,0) -> 4 + 5 = 9
-        assertEquals(5, StoerWagner.minCutValue(g));
+        assertEquals(5, GlobalMinCutStoerWagner.minCutValue(g));
     }
 
     @Test
@@ -28,7 +28,7 @@ public class StoerWagnerTest {
         LongValueGraph g = new LongValueGraph(4);
         g.addEdge(0, 1, 10);
         g.addEdge(2, 3, 10);
-        assertEquals(0, StoerWagner.minCutValue(g));
+        assertEquals(0, GlobalMinCutStoerWagner.minCutValue(g));
     }
 
     @Test
@@ -37,7 +37,7 @@ public class StoerWagnerTest {
         g.addEdge(0, 1, 1);
         g.addEdge(1, 2, 1);
         g.addEdge(2, 0, 1);
-        assertEquals(2, StoerWagner.minCutValue(g));
+        assertEquals(2, GlobalMinCutStoerWagner.minCutValue(g));
     }
 
     @Test
@@ -57,7 +57,7 @@ public class StoerWagnerTest {
         g.addEdge(5, 6, 1);
         g.addEdge(6, 7, 3);
 
-        assertEquals(4, StoerWagner.minCutValue(g));
+        assertEquals(4, GlobalMinCutStoerWagner.minCutValue(g));
     }
 
     @Test
@@ -76,7 +76,7 @@ public class StoerWagnerTest {
         g.addEdge(5, 6, 1);
         g.addEdge(6, 7, 3);
 
-        StoerWagner.Result res = StoerWagner.minCut(g);
+        GlobalMinCutStoerWagner.Result res = GlobalMinCutStoerWagner.minCut(g);
         assertEquals(4, res.value());
 
         long actualCut = 0;

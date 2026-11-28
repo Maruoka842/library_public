@@ -99,7 +99,7 @@ public class GraphTest {
         assertEquals(4, forest.M);
         assertTrue(forest.isConnected());
         assertTrue(forest.isRooted());
-        assertNull(forest.findCycleVertices());
+        assertNull(forest.findCycle());
     }
 
     @Test
@@ -116,7 +116,7 @@ public class GraphTest {
         assertEquals(5, forest.N);
         assertEquals(3, forest.M); // (3 - 1) + (2 - 1) = 3
         assertEquals(2, forest.numberOfConnectedComponents());
-        assertNull(forest.findCycleVertices());
+        assertNull(forest.findCycle());
     }
 
     @Test
@@ -132,7 +132,7 @@ public class GraphTest {
         assertEquals(3, forest.N);
         assertEquals(2, forest.M);
         assertTrue(forest.isConnected());
-        assertNull(forest.findCycleVertices());
+        assertNull(forest.findCycle());
     }
 
     @Test
@@ -171,7 +171,7 @@ public class GraphTest {
             assertEquals(5, f.M);
             assertTrue(f.isConnected());
             assertTrue(f.isRooted());
-            assertNull(f.findCycleVertices());
+            assertNull(f.findCycle());
         }
     }
 
@@ -209,7 +209,7 @@ public class GraphTest {
         assertEquals(4, tree.M);
         assertTrue(tree.isConnected());
         assertTrue(tree.isRooted());
-        assertNull(tree.findCycleVertices());
+        assertNull(tree.findCycle());
     }
 
     @Test
@@ -240,7 +240,7 @@ public class GraphTest {
         assertEquals(3, tree.N);
         assertEquals(2, tree.M);
         assertTrue(tree.isConnected());
-        assertNull(tree.findCycleVertices());
+        assertNull(tree.findCycle());
     }
 
     @Test
@@ -279,7 +279,7 @@ public class GraphTest {
             assertEquals(5, t.M);
             assertTrue(t.isConnected());
             assertTrue(t.isRooted());
-            assertNull(t.findCycleVertices());
+            assertNull(t.findCycle());
         }
     }
 
@@ -293,14 +293,14 @@ public class GraphTest {
         assertEquals(7, forest1.M);
         assertTrue(forest1.isConnected());
         assertTrue(forest1.isRooted());
-        assertNull(forest1.findCycleVertices());
+        assertNull(forest1.findCycle());
 
         Forest forest2 = gConnected.randomKruskalSpanningForest();
         assertEquals(8, forest2.N);
         assertEquals(7, forest2.M);
         assertTrue(forest2.isConnected());
         assertTrue(forest2.isRooted());
-        assertNull(forest2.findCycleVertices());
+        assertNull(forest2.findCycle());
 
         Graph gDisconnected = new Graph(5);
         gDisconnected.addEdge(0, 1);
@@ -313,7 +313,7 @@ public class GraphTest {
         assertEquals(3, forest3.M);
         assertEquals(2, forest3.numberOfConnectedComponents());
         assertTrue(forest3.isRooted());
-        assertNull(forest3.findCycleVertices());
+        assertNull(forest3.findCycle());
 
         Graph gEmpty = new Graph(0);
         Forest forestEmpty = gEmpty.randomKruskalSpanningForest();
@@ -331,14 +331,14 @@ public class GraphTest {
         assertEquals(7, tree1.M);
         assertTrue(tree1.isConnected());
         assertTrue(tree1.isRooted());
-        assertNull(tree1.findCycleVertices());
+        assertNull(tree1.findCycle());
 
         Forest tree2 = gConnected.randomKruskalSpanningTree();
         assertEquals(8, tree2.N);
         assertEquals(7, tree2.M);
         assertTrue(tree2.isConnected());
         assertTrue(tree2.isRooted());
-        assertNull(tree2.findCycleVertices());
+        assertNull(tree2.findCycle());
 
         Graph gEmpty = new Graph(0);
         Forest treeEmpty = gEmpty.randomKruskalSpanningTree();

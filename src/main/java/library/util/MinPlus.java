@@ -1,6 +1,8 @@
 package library.util;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.PriorityQueue;
 import java.util.Random;
 
 import library.util.MonotoneMinima.CostFunction;
@@ -85,6 +87,23 @@ public class MinPlus {
 			ret[i]=f.calc(i, args[i]);
 		}
 		return ret;
+	}
+	
+	/**
+	 * 未テスト
+	 * @param arrays
+	 * @return
+	 */
+	public static long[] convolveConvex(List<long[]> arrays) {
+	    if (arrays.isEmpty()) return new long[]{0};
+	    PriorityQueue<long[]> pq = new PriorityQueue<>((x, y) -> Integer.compare(x.length, y.length));
+	    pq.addAll(arrays);
+	    while (pq.size() > 1) {
+	        long[] x = pq.poll();
+	        long[] y = pq.poll();
+	        pq.add(convolveConvexConvex(x, y));
+	    }
+	    return pq.poll();
 	}
 
 	

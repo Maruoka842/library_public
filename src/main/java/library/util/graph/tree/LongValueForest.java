@@ -228,6 +228,7 @@ public class LongValueForest extends  LongValueGraph {
 	}
 
 	/**
+	 * root, left, rightの順で記録
 	 * 未テスト
 	 */
 	public int[] preOrder() {

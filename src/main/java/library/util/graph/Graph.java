@@ -1280,7 +1280,7 @@ public class Graph {
         return min[v];
     }
 
-    public int[] findCycleVertices() {
+    public int[] findCycle() {
     	//https://judge.yosupo.jp/problem/cycle_detection_undirected
 		int[] state=new int[N];//0:未訪問,1:pathに載っている,2:棄却した
 		IntArrayList ans=new IntArrayList();
@@ -1452,7 +1452,7 @@ public class Graph {
 	 * @param v
 	 * @return
 	 */
-    public int[] findCycleVertices(int u, int v) {
+    public int[] findCycle(int u, int v) {
 		MaxFlow mf=new MaxFlow(2*N);
 		int source=2*u;
 		int sink=2*v+1;
@@ -2001,6 +2001,87 @@ public class Graph {
 				}
 			}
 		}
+	}
+	
+	/**
+	 * 頂点 {@code v} を含む単純サイクルを一つ返す。
+	 * サイクルが存在しない場合は {@code null} を返す。
+	 *
+	 * 平行辺2本による長さ2のサイクルも検出する。
+	 * 自己ループはサイクルとして扱わない。
+	 *
+	 * <ul>
+	 *   <li>事前条件: {@code 0 <= v < N}。</li>
+	 *   <li>事後条件: 戻り値が非 {@code null} の場合、先頭が {@code v} であり、
+	 *       {@code v} を含むサイクルを構成する。</li>
+	 *   <li>副作用: なし。</li>
+	 *   <li>計算量: O(N + M)</li>
+	 *   <li>追加空間計算量: O(N)</li>
+	 * </ul>
+	 *
+	 * 未テスト
+	 *
+	 * @param v サイクルに含める頂点
+	 * @return サイクルの頂点列、または {@code null}
+	 */
+	public int[] findCycle(int v) {
+		//https://atcoder.jp/contests/abc276/submissions/81097544
+	    if (v < 0 || v >= N) throw new AssertionError();
+
+	    int[] owner = new int[N];
+	    int[] parent = new int[N];
+	    Arrays.fill(owner, -1);
+	    Arrays.fill(parent, -1);
+
+	    IntDeque que = new IntDeque();
+
+	    // v に接続する平行辺を検出し、BFS の始点を登録する。
+	    for (int u : adj[v]) {
+	        if (u == v) continue;
+	        if (owner[u] != -1) return new int[] {v, u};
+
+	        owner[u] = u;
+	        que.addLast(u);
+	    }
+
+	    while (que.isNonEmpty()) {
+	        int x = que.pollFirst();
+
+	        for (int y : adj[x]) {
+	            if (y == v) continue;
+
+	            if (owner[y] == -1) {
+	                owner[y] = owner[x];
+	                parent[y] = x;
+	                que.addLast(y);
+	            } else if (owner[y] != owner[x]) {
+	                // 異なる BFS 木を結ぶ辺 (x, y) が見つかった。
+
+	                // 始点 owner[x] から x までの経路
+	                IntArrayList path = new IntArrayList();
+	                for (int cur = x; cur != -1; cur = parent[cur]) {
+	                    path.add(cur);
+	                }
+	                path.reverse();
+
+	                IntArrayList ans = new IntArrayList();
+	                ans.add(v);
+
+	                for (int u : path) {
+	                    ans.add(u);
+	                }
+
+	                // y から始点 owner[y] までの経路
+	                for (int cur = y; cur != -1; cur = parent[cur]) {
+	                    ans.add(cur);
+	                }
+
+	                return ans.toArray();
+	            }
+	        }
+	    }
+
+	    return null;
 	}
 
     

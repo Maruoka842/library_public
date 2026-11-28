@@ -1,20 +1,18 @@
 package library.util.graph.tree;
 
-import java.util.Arrays;
-
 import library.util.collections.MeldableLazyOrderStatisticMultiset;
 
-public class LaminarConcaveCardinalityMax {
+public class MinCostFlowOnTree {
 
 	/**
-	 * 
+	 *
 	 * 離散関数の差分列において、差分値が一定である区間を表す。
 	 *
 	 * <p>
 	 * 離散関数 {@code phi} に対し、
 	 *
 	 * <pre>
-	 * 
+	 *
 	 * diff(i) = phi(i + 1) - phi(i)
 	 * </pre>
 	 *
@@ -24,14 +22,14 @@ public class LaminarConcaveCardinalityMax {
 	 * この区分の開始位置を {@code begin} とすると、
 	 *
 	 * <pre>
-	 * 
+	 *
 	 * begin <= i < endExclusive
 	 * </pre>
 	 *
 	 * を満たすすべての {@code i} について
 	 *
 	 * <pre>
-	 * 
+	 *
 	 * diff(i) = gain
 	 * </pre>
 	 *
@@ -40,7 +38,17 @@ public class LaminarConcaveCardinalityMax {
 	 * <p>
 	 * 複数の {@code SlopeSegment} を先頭から並べる場合、 最初の区分は 0 から始まり、それ以降の区分は 直前の区分の
 	 * {@code endExclusive} から始まる。
-	 * 
+	 *
+	 * <p>
+	 * 最小費用流の言葉では、 区分 {@code [begin, endExclusive)} は
+	 *
+	 * <pre>
+	 * 容量 (endExclusive - begin)、 単位コスト gain
+	 * </pre>
+	 *
+	 * の 1 本の辺に対応する。 凸関数の差分は単位コストの非減少列なので、 区分の列は 同じ 2 頂点間を結ぶ並列辺の集合であり、 流量が増えるにつれて
+	 * 単位コストの小さい辺から順に使われる。
+	 *
 	 * @param endExclusive この区分の右端（非包含）
 	 * @param gain         この区分における差分値
 	 */
@@ -48,51 +56,68 @@ public class LaminarConcaveCardinalityMax {
 	}
 
 	/**
-	 * 根付き木上で、選択頂点数ごとの最大値を求める。
+	 * 根付き木上の最小費用流として、 流量 {@code k} ごとの最小費用を求める。
 	 *
 	 * <p>
-	 * 頂点 {@code v} の部分木を {@code T_v} とし、 各頂点に離散凹関数
+	 * 根付き木の頂点集合を {@code V}、 頂点 {@code v} の部分木を {@code T_v} とする。 次のネットワークを考える。
 	 *
 	 * <pre>
-	 * phi_v : {0, 1, ..., |T_v|} -> long
+	 * S    : 始点
+	 * T    : 終点
+	 *
+	 * S    -> v             (v ∈ V)       容量 1、 コスト 0
+	 * v    -> parent(v)     (v != root)   流量 f に対するコスト phi_v(f)、 容量 |T_v|
+	 * root -> T                           流量 f に対するコスト phi_root(f)、 容量 N
 	 * </pre>
 	 *
-	 * が与えられる。すべての {@code k = 0, 1, ..., N} について
+	 * 辺 {@code v -> parent(v)} （根では {@code root -> T}）を {@code e_v} と書く。
+	 * 各頂点で流量保存則が成り立つので、 {@code S -> v} に流した頂点の集合を {@code X} とすると、
 	 *
 	 * <pre>
-	 * max  sum_v phi_v(|X ∩ T_v|)
+	 * (e_v の流量) = |X ∩ T_v|
+	 * </pre>
 	 *
+	 * となる。 したがって {@code S} から {@code T} へ流量ちょうど {@code k} を流す最小費用流は、
+	 *
+	 * <pre>
+	 * min  sum_v phi_v(|X ∩ T_v|)
 	 * subject to X ⊆ V, |X| = k
 	 * </pre>
 	 *
-	 * を求める。
+	 * に等しい。 これが {@code ret[k]} である。
 	 *
 	 * <p>
-	 * {@code valueAtZero[v]} は {@code phi_v(0)} を表す。 {@code slopes[v]} は差分列
+	 * 各辺のコスト関数 {@code phi_v(f)} は離散凸であり、 {@link SlopeSegment} の列として 「容量
+	 * {@code endExclusive - begin}、 単位コスト {@code gain} の並列辺」の集合で表される。 そのため上のネットワークは
+	 * 線形コストの辺だけを持つ通常の最小費用流に帰着でき、 {@code ret} は {@code k} について凸になる。 本メソッドは流量を 1
+	 * ずつ増やす最短路反復を行う代わりに、 木上の DP の差分列 （流量を 1 増やすときの追加コストを小さい順に並べたもの）を 昇順に保ったまま
+	 * 子から親へマージして求める。
+	 *
+	 * <p>
+	 * 入力は次の形式で与える。{@code slopes[v]} は {@code e_v} の並列辺、 すなわち差分列
 	 *
 	 * <pre>
 	 * phi_v(i + 1) - phi_v(i)    (0 <= i < |T_v|)
 	 * </pre>
 	 *
-	 * を {@link SlopeSegment} の列で区分一定に表したものである。 {@code phi_v}
-	 * が離散凹であるため、この差分列は非増加でなければならない。
+	 * を {@link SlopeSegment} の列で区分一定に表したものである。 {@code phi_v} が離散凸であるため、
+	 * この差分列（単位コスト）は非減少でなければならない。
 	 *
 	 * <p>
-	 * {@code slopes[v]} は区間 {@code [0, |T_v|)} を 隙間なく覆わなければならない。
+	 * {@code slopes[v]} は区間 {@code [0, |T_v|)} （{@code e_v} の流量の範囲）を
+	 * 隙間なく覆わなければならない。
 	 *
 	 * <p>
-	 * {@code B} を全頂点の {@link SlopeSegment} 数の総和とすると、 期待計算量は O((N + B) log
+	 * {@code B} を全頂点の {@link SlopeSegment} 数の総和（並列辺の総数）とすると、 期待計算量は O((N + B) log
 	 * N)、補助空間計算量は O(N)。 特に各 {@code phi_v} が O(1) 個の区分で表される場合は期待 O(N log N)。
 	 *
-	 * @param tree        根付き木。事前に {@link Tree#rooted(int)} が呼ばれている必要がある
-	 * @param valueAtZero {@code valueAtZero[v] = phi_v(0)}
-	 * @param slopes      各 {@code phi_v} の差分列の区分一定表現
-	 * @return 長さ {@code N + 1} の配列。 {@code ret[k]} はちょうど {@code k} 頂点を選択したときの最大値
+	 * @param tree   根付き木。事前に {@link Tree#rooted(int)} が呼ばれている必要がある
+	 * @param slopes 各 {@code phi_v} の差分列の区分一定表現
+	 * @return 長さ {@code N + 1} の配列。 {@code ret[k]} はちょうど {@code k} 頂点を選択したときの最小値
 	 * @throws IllegalArgumentException {@code tree} が根付けされていない場合、 または入力配列の長さや
 	 *                                  {@code slopes} が不正な場合
 	 */
-	public static long[] maximizeByCardinality(Tree tree, long[] valueAtZero, SlopeSegment[][] slopes) {
-		//https://atcoder.jp/contests/abc369/submissions/78735034
+	public static long[] minCostFlowByCardinality(Tree tree, SlopeSegment[][] slopes) {
 		if (!tree.isRooted()) {
 			throw new IllegalArgumentException("tree must be rooted");
 		}
@@ -101,16 +126,16 @@ public class LaminarConcaveCardinalityMax {
 		int n = order.length;
 		int root = tree.root();
 
-		if (valueAtZero.length != n || slopes.length != n) {
+		if (slopes.length != n) {
 			throw new IllegalArgumentException("length mismatch");
 		}
 
-		// DP の差分値を大きい順に持つ。
+		// DP の差分値を小さい順に持つ。
 		var strategy = new MeldableLazyOrderStatisticMultiset.Strategy<Long, Long>() {
 
 			@Override
 			public int compare(Long a, Long b) {
-				return Long.compare(b, a);
+				return Long.compare(a, b);
 			}
 
 			@Override
@@ -128,14 +153,6 @@ public class LaminarConcaveCardinalityMax {
 		MeldableLazyOrderStatisticMultiset<Long, Long>[] dp = (MeldableLazyOrderStatisticMultiset<Long, Long>[]) new MeldableLazyOrderStatisticMultiset<?, ?>[n];
 
 		/*
-		 * phi_v(0) は選択集合 X に依存しないので、 全頂点分を共通定数としてまとめておく。
-		 */
-		long constant = 0;
-		for (long x : valueAtZero) {
-			constant += x;
-		}
-
-		/*
 		 * bfsOrder の逆順に処理する。 頂点 v の処理時には、全ての子の DP の差分列が dp[v] に meld 済みになっている。
 		 */
 		for (int oi = n - 1; oi >= 0; oi--) {
@@ -144,17 +161,21 @@ public class LaminarConcaveCardinalityMax {
 			SlopeSegment[] segments = slopes[v];
 			int subtreeSize = tree.size(v);
 
+			if (segments == null || segments.length == 0) {
+				throw new IllegalArgumentException("slopes[" + v + "] is empty");
+			}
+
 			/*
 			 * [0, subtreeSize) を覆うまでの Segment だけ使用する。 それより後の Segment はこの頂点では不要なので無視する。
 			 *
 			 * 例えば subtreeSize = 1 のとき
 			 *
-			 * (1, 1), (N, 0)
+			 * (1, -1), (N, 0)
 			 *
 			 * が与えられても、最初の Segment だけを使用する。
 			 */
 			int m = 1;
-			while (segments[m - 1].endExclusive() < subtreeSize) {
+			while (m < segments.length && segments[m - 1].endExclusive() < subtreeSize) {
 				m++;
 			}
 
@@ -172,13 +193,13 @@ public class LaminarConcaveCardinalityMax {
 			d.add(0L);
 
 			/*
-			 * 現在の d は、子部分木と v 自身だけを考えた DP の差分列である。
+			 * 現在の d は、子部分木と v 自身だけを考えた DP の差分列（昇順）である。
 			 *
 			 * その第 k 要素に
 			 *
 			 * phi_v(k + 1) - phi_v(k)
 			 *
-			 * を加えることで、T_v 全体の DP の差分列にする。
+			 * を加えることで、T_v 全体の DP の差分列にする。 phi_v は凸なのでこの加算値は非減少であり、加算後も昇順が保たれる。
 			 *
 			 * slopes[v] はこの加算値を区分一定に表している。
 			 */
@@ -214,13 +235,11 @@ public class LaminarConcaveCardinalityMax {
 		}
 
 		/*
-		 * 根の DP の差分列から、 選択頂点数ごとの最大値を復元する。
+		 * 根の DP の差分列から、 選択頂点数ごとの最小値を復元する。
 		 */
 		long[] ret = new long[n + 1];
 
-		ret[0] = constant;
-
-		long value = constant;
+		long value = 0;
 		int k = 0;
 
 		for (var e : dp[root].entries()) {
@@ -239,10 +258,6 @@ public class LaminarConcaveCardinalityMax {
 
 	private static void validateSlopes(int v, int subtreeSize, SlopeSegment[] segments, int usedSegments) {
 
-		if (segments == null || segments.length == 0) {
-			throw new IllegalArgumentException("slopes[" + v + "] is empty");
-		}
-
 		int previousEnd = 0;
 		long previousGain = 0;
 
@@ -260,8 +275,8 @@ public class LaminarConcaveCardinalityMax {
 				throw new IllegalArgumentException("segment ends are not strictly increasing at v = " + v);
 			}
 
-			if (i > 0 && previousGain < s.gain()) {
-				throw new IllegalArgumentException("slopes[" + v + "] is not non-increasing");
+			if (i > 0 && previousGain > s.gain()) {
+				throw new IllegalArgumentException("slopes[" + v + "] is not non-decreasing");
 			}
 
 			previousEnd = s.endExclusive();

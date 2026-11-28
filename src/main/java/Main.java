@@ -1,63 +1,46 @@
 import java.io.IOException;
-import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Random;
 
 import library.tools.FastScanner;
 import library.tools.JavaToCpp;
 import library.tools.MergeFiles;
 import library.tools.MyPrintWriter;
-import library.util.ArrayStatistics;
 import library.util.ArrayUtils;
-import library.util.geometry.GeometryUtils;
+import library.util.Fp;
+import library.util.algebra.strategy.longs.LongAddAbelianGroupStrategy;
+import library.util.fold.StaticPointAddRangeSum3D;
+import library.util.seq.GeneralizedSuffixTree;
+import library.util.seq.SuffixTree;
+import library.util.unionfind.LongEdgeValueUnionFind;
+import library.util.unionfind.VertexValueUnionFind;
+import library.util.unionfind.VertexValueUnionFindFactory;
 
-public class Main {
-	static MyPrintWriter pw = MyPrintWriter.getInstance();
-	static FastScanner sc = FastScanner.getInstance();
+public class Main implements Runnable {
 
 	public static void main(String[] args) throws IOException {
+		// Runtime runtime = Runtime.getRuntime();
+// new Thread(null, new Main(), "MainThreadWithLargeStack", (1024 * 1024) *1024).start();
 		new Main().run();
-		pw.flush();
+// long usedMemory = runtime.totalMemory() - runtime.freeMemory();
+// System.err.printf("使用メモリ: %.2f MB%n", usedMemory / 1024.0 / 1024.0);
+		MyPrintWriter.getInstance().flush();
 		MergeFiles.export();
 		JavaToCpp.export();
 	}
 
-	void run() {
-		for(int i=0;i<8;++i) {
-			int v=i*(i+1)%8;
-			if(i%2==1)v^=2;
-			if(i/2%2==1)v^=2^4;
-			if(i/4%2==1)v^=4;
-			System.out.println(Integer.toBinaryString(v));
-		}
-		//x^2+x+1
-		//x(x+1)+1
-		//x(x+1)は偶数
-		//x(x+1)
-		//(4a+2b+c)^2+(4a+2b+c)
-		//=4b+4bc+4b+c+4a+2b+c
-		//=4a+6b+4bc+2c
-
-		//=2a+3b+2bc+c
-		//=
-	}
-
-	
-//	000
-//	010
-//	110
-//	100
-//	100
-//	110
-//	010
-//	000
-
-	
-	
-	static int nextCyclic(int[][] nxt, int cur, int val, int n) {
-		if (cur + 1 < n) return nxt[cur + 1][val];
-		return nxt[0][val];
+	Random rnd = new Random();
+	int N;
+	@java.lang.Override
+	public void run() {
+		FastScanner sc = FastScanner.getInstance();
+		MyPrintWriter pw = MyPrintWriter.getInstance();
+		SuffixTree tree=new SuffixTree(null, null, null);
+		GeneralizedSuffixTree st;
 	}
 	
+		
+
 	void tr(Object... objects) {
 		System.out.println(Arrays.deepToString(objects));
 	}

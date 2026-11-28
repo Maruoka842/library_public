@@ -20,6 +20,102 @@ import library.util.seq.Permutation;
 
 public class ArrayUtils {
 	
+    public static boolean[] concatBooleans(List<boolean[]> list) {
+        int total = 0;
+        for (boolean[] a : list) total += a.length;
+        boolean[] result = new boolean[total];
+        int pos = 0;
+        for (boolean[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static byte[] concatBytes(List<byte[]> list) {
+        int total = 0;
+        for (byte[] a : list) total += a.length;
+        byte[] result = new byte[total];
+        int pos = 0;
+        for (byte[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static short[] concatShorts(List<short[]> list) {
+        int total = 0;
+        for (short[] a : list) total += a.length;
+        short[] result = new short[total];
+        int pos = 0;
+        for (short[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static char[] concatChars(List<char[]> list) {
+        int total = 0;
+        for (char[] a : list) total += a.length;
+        char[] result = new char[total];
+        int pos = 0;
+        for (char[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static int[] concatInts(List<int[]> list) {
+        int total = 0;
+        for (int[] a : list) total += a.length;
+        int[] result = new int[total];
+        int pos = 0;
+        for (int[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static long[] concatLongs(List<long[]> list) {
+        int total = 0;
+        for (long[] a : list) total += a.length;
+        long[] result = new long[total];
+        int pos = 0;
+        for (long[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static float[] concatFloats(List<float[]> list) {
+        int total = 0;
+        for (float[] a : list) total += a.length;
+        float[] result = new float[total];
+        int pos = 0;
+        for (float[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+
+    public static double[] concatDoubles(List<double[]> list) {
+        int total = 0;
+        for (double[] a : list) total += a.length;
+        double[] result = new double[total];
+        int pos = 0;
+        for (double[] a : list) {
+            System.arraycopy(a, 0, result, pos, a.length);
+            pos += a.length;
+        }
+        return result;
+    }
+	
 	public static boolean all(char[] a, char v) {
 		for (int i = 0; i < a.length; i++) {
 			if(a[i]!=v)return false;
@@ -3096,7 +3192,7 @@ public class ArrayUtils {
 
 	public static int[] rotateLeft(int[] a, int shift) {
 		shift = shift % a.length;
-		if (shift < a.length)
+		if (shift < 0)
 			shift += a.length;
 		int[] b = new int[a.length];
 		for (int i = 0; i < a.length; ++i) {
@@ -3117,7 +3213,7 @@ public class ArrayUtils {
 	 */
 	public static long[] rotateLeft(long[] a, int shift) {
 		shift = shift % a.length;
-		if (shift < a.length)
+		if (shift < 0)
 			shift += a.length;
 		long[] b = new long[a.length];
 		for (int i = 0; i < a.length; ++i) {
@@ -3148,7 +3244,7 @@ public class ArrayUtils {
 	 */
 	public static char[] rotateLeft(char[] a, int shift) {
 		shift = shift % a.length;
-		if (shift < a.length)
+		if (shift < 0)
 			shift += a.length;
 		char[] b = new char[a.length];
 		for (int i = 0; i < a.length; ++i) {
@@ -4441,6 +4537,20 @@ public class ArrayUtils {
 		while (list.size() > size)list.removeLast();
 	}
 	
+	/**
+	 * 自然順序で a を昇順に整列し、比較結果が 0 となる要素を1つにまとめた配列を返す。
+	 * 時間計算量は O(n log n)、空間計算量は O(n)。
+	 * @param a 入力配列
+	 * @return 整列・重複除去後の配列
+	 * 未テスト。
+	 */
+	public static <T extends Comparable<? super T>> T[] sortq(T[] a) {
+		return sortq(a, Comparator.naturalOrder());
+	}
+	
+	/**
+	 * comp順序で a を昇順に整列し、比較結果が 0 となる要素を1つにまとめた配列を返す。
+	 */
 	public static <T> T[] sortq(T[] a, Comparator<T> comp) {
 		if (a.length==0)return a.clone();
 		T[] b=a.clone();
@@ -5512,6 +5622,20 @@ public class ArrayUtils {
      * @return
      */
     public static int lastIndexOf(int[] a, int v) {
+    	int i=a.length-1;
+    	while(i>=0&&a[i]!=v) {
+    		--i;
+    	}
+    	return i;
+    }
+    
+    /**
+     * a[i]=vとなる最後のindexを返す。存在しないときは-1を返す。
+     * @param v
+     * @param a
+     * @return
+     */
+    public static int lastIndexOf(char[] a, char v) {
     	int i=a.length-1;
     	while(i>=0&&a[i]!=v) {
     		--i;

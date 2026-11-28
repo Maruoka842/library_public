@@ -1168,6 +1168,7 @@ public class Itertools {
         }
         
         public boolean hasNext() {
+        	if(n==0 && k>0)return false;
         	if (first) {
         		return true;
         	}

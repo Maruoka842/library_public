@@ -42,6 +42,25 @@ public class LongValueTree extends LongValueForest {
 		return ret;
 	}
 
+	/**
+	 * この木と同じ頂点集合および辺集合を持つ {@link Tree} を返す。
+	 * 各辺の重みは無視し、この木が根 r を持つ場合は返される木も r を根に持つ。
+	 * O(N + M)
+	 *
+	 * @return この木に対応する無重み木
+	 */
+	// 未テスト
+	public Tree toTree() {
+		Tree ret = new Tree(N);
+		for (int i = 0; i < N; i++) {
+			for (Edge e : adj[i]) {
+				if (i < e.dst) ret.addEdge(i, e.dst);
+			}
+		}
+		if (isRooted()) ret.rooted(root);
+		return ret;
+	}
+
 	public int root() {
 		return root;
 	}

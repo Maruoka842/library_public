@@ -10,7 +10,7 @@ import java.util.TreeMap;
  * 点を追加しながら、現在の凸包の端点、面積、包含判定、特定の方向への最大内積（極値点）などを効率的に求めることができる。
  * 内部的には、上側凸包（Upper Hull）と下側凸包（Lower Hull）をそれぞれ {@link TreeMap} で管理する。
  * 全ての計算は 64ビット符号付き整数型 (long) のみを用いて高速に行われる。
- *
+ * 保持するのは凸包の頂点（角）のみ。辺上の点は保持されない。
  * 座標の上限に関する安全性:
  * 座標の絶対値が 10^9 以下であれば、外積および極値点判定の計算中に 64ビット符号付き整数 (long) がオーバーフローすることはありません。
  *
@@ -90,7 +90,7 @@ public class IncrementalConvexHull {
      *
      * @param x 点のx座標
      * @param y 点のy座標
-     * @return 凸包に変化があった場合（点が新たに追加された場合）は true、既存の凸包に含まれ変化がなかった場合は false
+     * @return 点が新たに凸包の頂点となり頂点集合が変化した場合 true、既存の凸包に含まれ変化がなかった場合は false
      */
     public boolean add(long x, long y) {
     	//https://judge.yosupo.jp/submission/385509
@@ -384,8 +384,6 @@ public class IncrementalConvexHull {
 
     /**
      * ベクトル (dx, dy) とのドット積 x * dx + y * dy を最大化する凸包の頂点（極値点）を返す。
-     * なお、本メソッドでは、凸包の辺上の頂点（角ではない中途の点、すなわち同一直線上の冗長な点）は考慮対象外であり、
-     * 凸包の角をなす極値頂点（極値点）のみを対象として探索を行います。
      * 計算量: O(log(coordinate_range) * log N)
      * // 未テスト
      *
@@ -540,7 +538,6 @@ public class IncrementalConvexHull {
 
     /**
      * ベクトル (dx, dy) とのドット積 x * dx + y * dy の最大値を返す。
-     * なお、本メソッドでは、凸包の辺上の頂点（角ではない中途の点、すなわち同一直線上の冗長な点）は考慮対象外であり、
      * 凸包の角をなす極値頂点（極値点）のみを対象としてドット積の最大値を求めます。
      * 計算量: O(log(coordinate_range) * log N)
      * // 未テスト
@@ -560,8 +557,6 @@ public class IncrementalConvexHull {
 
     /**
      * ベクトル (dx, dy) とのドット積 x * dx + y * dy を最小化する凸包の頂点（極値点）を返す。
-     * なお、本メソッドでは、凸包の辺上の頂点（角ではない中途の点、すなわち同一直線上の冗長な点）は考慮対象外であり、
-     * 凸包の角をなす極値頂点（極値点）のみを対象として探索を行います。
      * 計算量: O(log(coordinate_range) * log N)
      * // 未テスト
      *
@@ -575,7 +570,6 @@ public class IncrementalConvexHull {
 
     /**
      * ベクトル (dx, dy) とのドット積 x * dx + y * dy の最小値を返す。
-     * なお、本メソッドでは、凸包の辺上の頂点（角ではない中途の点、すなわち同一直線上の冗長な点）は考慮対象外であり、
      * 凸包の角をなす極値頂点（極値点）のみを対象としてドット積の最小値を求めます。
      * 計算量: O(log(coordinate_range) * log N)
      * // 未テスト
@@ -594,15 +588,26 @@ public class IncrementalConvexHull {
 
     /**
      * 凸包の頂点数を返す。
-     * 計算量: O(N)
+     * 計算量: O(log N)
      * // 未テスト
      *
      * @return 頂点数
      */
     public int size() {
-        return getVertices().size();
+        if (upper.isEmpty()) {
+            return 0;
+        }
+        Map.Entry<Long, Long> uFirst = upper.firstEntry();
+        Map.Entry<Long, Long> lFirst = lower.firstEntry();
+        if (upper.size() == 1) {
+            // x が1種類のみ: 上下の y が同じなら1点、違えば縦線の2点
+            return uFirst.getValue().equals(lFirst.getValue()) ? 1 : 2;
+        }
+        int n = lower.size() + upper.size();
+        if (uFirst.getValue().equals(lFirst.getValue())) n--;
+        if (upper.lastEntry().getValue().equals(lower.lastEntry().getValue())) n--;
+        return n;
     }
-
 	/**
 	 * このインクリメンタル凸包と別のオブジェクトの同値性を判定します。
 	 *

@@ -1,8 +1,15 @@
 package library.util.graph.tree;
 
 import java.util.Iterator;
+import java.awt.Component;
+
+import javax.swing.JFrame;
+import javax.swing.SwingUtilities;
 
 import library.util.collections.IntArrayList;
+import org.graphstream.graph.Node;
+import org.graphstream.graph.implementations.MultiGraph;
+import org.graphstream.ui.view.Viewer;
 
 /**
  * 辺の追加が可能な森（Incremental Forest）を管理するクラス。
@@ -18,6 +25,8 @@ import library.util.collections.IntArrayList;
  * O(log N) ステップで可能となる。
  */
 public class IncrementalForest {
+	//https://atcoder.jp/contests/abc350/tasks/abc350_g
+    private static int drawCount = 0; // draw 呼び出しごとのグラフ名を一意にするカウンタ
     // 頂点の属性
     private final IntArrayList jump = new IntArrayList();      // Jump Pointer (遡上を高速化)
     private final IntArrayList parent = new IntArrayList();    // 親頂点 (-1 は根)
@@ -251,7 +260,7 @@ public class IncrementalForest {
     }
 
     /**
-     * 頂点 u と v の最近共通祖先（LCA）を返す。
+     * 頂点 u と v の最近共通祖先（LCA）を返す。非連結の場合は-1
      * 計算量: O(log N)
      */
     public int lca(int u, int v) {
@@ -325,6 +334,27 @@ public class IncrementalForest {
     }
 
     /**
+     * u から v へ向かうパス上で、u から k 辺進んだ頂点を返す。
+     * k < 0 または u, v が非連結なら -1 を返し、パスを通り過ぎる場合も -1 を返す。
+     * 計算量: O(log N)
+     * 未テスト。
+     * @param u 始点
+     * @param v 終点
+     * @param k u から進む辺数
+     * @return 条件を満たす頂点、または -1
+     */
+    public int jump(int u, int v, int k) {
+        if (k < 0) return -1;
+        int w = lca(u, v);
+        if (w < 0) return -1;
+        int du = depth.get(u) - depth.get(w);
+        int dv = depth.get(v) - depth.get(w);
+        if (k > du + dv) return -1;
+        if (k <= du) return la(u, depth.get(u) - k);
+        return la(v, depth.get(v) - (du + dv - k));
+    }
+
+    /**
      * 頂点 v の直接の子頂点を列挙する Iterable を返す。
      * 計算量: 子の数に対する線形時間
      */
@@ -342,5 +372,40 @@ public class IncrementalForest {
                 return res;
             }
         };
+    }
+
+    /**
+     * 頂点を 0..n-1、辺を親子関係として森を表示する。
+     * 計算量: O(n)
+     * 未テスト。
+     */
+    public void draw() {
+        System.setProperty("org.graphstream.ui", "swing");
+        String graphName = "IncrementalForest-" + (++drawCount);
+        org.graphstream.graph.Graph graph = new MultiGraph(graphName);
+        int n = numVertices();
+        for (int v = 0; v < n; v++) {
+            graph.addNode(String.valueOf(v));
+        }
+        int edgeId = 0;
+        for (int v = 0; v < n; v++) {
+            int p = parent.get(v);
+            if (p >= 0) {
+                graph.addEdge(String.valueOf(edgeId++), String.valueOf(p), String.valueOf(v), false);
+            }
+        }
+        for (Node node : graph) {
+            node.setAttribute("ui.label", node.getId());
+        }
+        graph.setAttribute("ui.stylesheet",
+                "node { fill-color: lightblue; size: 30px; text-alignment: center; "
+                + "text-size: 20; text-color: black; }");
+        Viewer viewer = graph.display();
+        SwingUtilities.invokeLater(() -> {
+            JFrame frame = (JFrame) SwingUtilities.getWindowAncestor((Component) viewer.getDefaultView());
+            if (frame != null) {
+                frame.setTitle(graphName);
+            }
+        });
     }
 }

@@ -8,7 +8,7 @@ import java.util.List;
  * Stoer-Wagner アルゴリズムを用いて無向グラフの最小カットを求めるクラス。
  * 辺の重みがすべて非負である必要がある。
  */
-public class StoerWagner {
+public class GlobalMinCutStoerWagner {
 
 	/**
 	 * 最小カットの結果を保持するレコード。

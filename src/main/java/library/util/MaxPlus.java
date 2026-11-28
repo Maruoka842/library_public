@@ -1,8 +1,26 @@
 package library.util;
 
 import java.util.Arrays;
+import java.util.List;
+import java.util.PriorityQueue;
 
 public class MaxPlus {
+	/**
+	 * 未テスト
+	 * @param arrays
+	 * @return
+	 */
+	public static long[] convolveConvexMulti(List<long[]> arrays) {
+	    if (arrays.isEmpty()) return new long[]{0};
+	    PriorityQueue<long[]> pq = new PriorityQueue<>((x, y) -> Integer.compare(x.length, y.length));
+	    pq.addAll(arrays);
+	    while (pq.size() > 1) {
+	        long[] x = pq.poll();
+	        long[] y = pq.poll();
+	        pq.add(convolveConcaveConcave(x, y));
+	    }
+	    return pq.poll();
+	}
 	
 	/**
 	 * Aが上に凸。

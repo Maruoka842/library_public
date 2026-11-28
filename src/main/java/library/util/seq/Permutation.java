@@ -11,10 +11,42 @@ import library.util.Zn;
 import library.util.collections.IntTreapSet;
 import library.util.polynomial.PolynomialFp;
 import library.util.polynomial.PolynomialFpDynamic;
+import library.util.segtree.PopcountBIT;
 import library.util.segtree.SegTree;
 import library.util.segtree.SegTreeFactory;
 
 public class Permutation {
+	
+	
+	public static boolean nextPermutation(int[] a) {
+		//https://atcoder.jp/contests/abc276/submissions/81096783
+	    int n = a.length;
+	    int i = n - 2;
+	    while (i >= 0 && a[i] >= a[i + 1]) i--;
+	    if (i < 0) return false;
+
+	    int j = n - 1;
+	    while (a[j] <= a[i]) j--;
+	    ArrayUtils.swap(i, j, a);
+	    ArrayUtils.reverse(a, i + 1, n);
+	    return true;
+	}
+	
+	public static boolean prevPermutation(int[] a) {
+		//https://atcoder.jp/contests/abc276/submissions/81096742
+	    int n = a.length;
+	    int i = n - 2;
+	    while (i >= 0 && a[i] <= a[i + 1]) i--;
+	    if (i < 0) return false;
+
+	    int j = n - 1;
+	    while (a[j] >= a[i]) j--;
+	    ArrayUtils.swap(i, j, a);
+	    ArrayUtils.reverse(a, i + 1, n);
+	    return true;
+	}
+
+
 	
 	public static int lexRankAsInt(int[] a) {
 		int ret = 0;
@@ -91,11 +123,11 @@ public class Permutation {
 	
 	public static long inversion(int[] a) {
 		int n = a.length;
-		SegTree<Long> tree = new SegTree<Long>(n, Long::sum, 0L);
+		PopcountBIT tree=new PopcountBIT(n);
 		long ans = 0;
 		for (int i = 0; i < a.length; ++i) {
-			ans += tree.fold(a[i] + 1, n);
-			tree.set(a[i], 1L);
+			ans += i - tree.sum(a[i]);
+			tree.set(a[i], true);
 		}
 		return ans;
 	}
